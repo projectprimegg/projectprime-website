@@ -40,6 +40,10 @@ jobs:
         shell: pwsh
         run: dotnet build prime/src/MphRead/MphRead.csproj -c Release -r win-x64
 
+      - name: Validate Freeze Tag mode survives launch/session plumbing
+        shell: pwsh
+        run: dotnet run --project prime/tools/nettest/nettest.csproj -c Release -- --gamemodecheck
+
       - name: Publish self-contained Windows client
         shell: pwsh
         run: |
@@ -89,10 +93,10 @@ jobs:
           '@ | Set-Content package/START_HERE_FREEZE_TAG.txt
           if (!(Test-Path package/ProjectPrime.exe)) { throw 'ProjectPrime.exe missing' }
           if (!(Test-Path package/ProjectPrimeServer.exe)) { throw 'ProjectPrimeServer.exe missing' }
-          Compress-Archive -Path package/* -DestinationPath ProjectPrime_FreezeTag_Playable_Test_win-x64.zip -CompressionLevel Optimal
-          Get-FileHash ProjectPrime_FreezeTag_Playable_Test_win-x64.zip -Algorithm SHA256 | Format-List
+          Compress-Archive -Path package/* -DestinationPath ProjectPrime_FreezeTag_Playable_Test_v1_1_win-x64.zip -CompressionLevel Optimal
+          Get-FileHash ProjectPrime_FreezeTag_Playable_Test_v1_1_win-x64.zip -Algorithm SHA256 | Format-List
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $z=[IO.Compression.ZipFile]::OpenRead((Resolve-Path ProjectPrime_FreezeTag_Playable_Test_win-x64.zip))
+          $z=[IO.Compression.ZipFile]::OpenRead((Resolve-Path ProjectPrime_FreezeTag_Playable_Test_v1_1_win-x64.zip))
           $names=$z.Entries.FullName
           $z.Dispose()
           if ($names -notcontains 'ProjectPrime.exe' -or $names -notcontains 'ProjectPrimeServer.exe') { throw 'archive missing executable' }
@@ -100,7 +104,7 @@ jobs:
       - name: Upload playable test
         uses: actions/upload-artifact@v4
         with:
-          name: ProjectPrime_FreezeTag_Playable_Test_win-x64
-          path: ProjectPrime_FreezeTag_Playable_Test_win-x64.zip
+          name: ProjectPrime_FreezeTag_Playable_Test_v1_1_win-x64
+          path: ProjectPrime_FreezeTag_Playable_Test_v1_1_win-x64.zip
           if-no-files-found: error
           retention-days: 7
