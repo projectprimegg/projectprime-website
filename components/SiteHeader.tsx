@@ -5,6 +5,7 @@ const nav = [
   ["Download", "/download"],
   ["Media", "/media"],
   ["Maps", "/maps"],
+  ["License", "/license"],
   ["Hunters", "/hunters"],
   ["Leaderboards", "/leaderboards"],
   ["Watch", "/watch"],
