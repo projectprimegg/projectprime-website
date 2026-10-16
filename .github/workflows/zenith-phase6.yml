@@ -1,0 +1,192 @@
+name: Project Prime Zenith Phase 6 Windows client
+
+on:
+  push:
+    branches:
+      - zenith-map-port-phase6
+    paths:
+      - ".github/workflows/zenith-phase6.yml"
+      - "build-staging/ai-engineer/**"
+      - "build-staging/studio-experience/**"
+      - "build-staging/lighting/**"
+      - "build-staging/zenith/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 100
+    steps:
+      - name: Checkout Zenith Phase 6 staging
+        uses: actions/checkout@v4
+
+      - name: Checkout validated Universal Map Studio Phase 2 patch
+        uses: actions/checkout@v4
+        with:
+          repository: projectprimegg/projectprime-website
+          ref: ci/universal-map-studio-v20
+          path: phase2-staging
+
+      - name: Checkout Project Prime 0.1.53 integration base
+        uses: actions/checkout@v4
+        with:
+          repository: AntiNotAnti/Project-Prime
+          ref: 91b1c0c6c44e8c90effd250729709f791a84765e
+          path: prime
+
+      - name: Setup .NET 10.0.401
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Decode validated Universal Map Studio patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $encoded = "phase2-staging/build-staging/universal-phase2-valid.patch.xz.b64"
+          [IO.File]::WriteAllBytes("universal-phase2-valid.patch.xz", [Convert]::FromBase64String((Get-Content $encoded -Raw).Trim()))
+          7z x -y "universal-phase2-valid.patch.xz" -o"." | Out-Null
+
+      - name: Apply Universal Map Studio Phase 2
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git apply --whitespace=nowarn ../universal-phase2-valid.patch
+
+      - name: Integrate AI Map Engineer Phase 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/ai-engineer/apply_ai_engineer.py build-staging/ai-engineer prime
+
+      - name: Integrate Beginner and Advanced Studio Experience Phase 4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/studio-experience/apply_studio_experience.py build-staging/studio-experience prime
+          python build-staging/studio-experience/apply_studio_experience_polish.py prime
+          python build-staging/studio-experience/apply_studio_layout_fix.py prime
+
+      - name: Integrate Beginner AI and real-time Lighting Phase 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/lighting/apply_lighting_compat.py prime
+          python build-staging/lighting/apply_studio_lighting_phase5.py build-staging/lighting prime
+          python build-staging/lighting/apply_lighting_visuals.py prime
+
+      - name: Integrate Zenith packed geometry and collision certification Phase 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/zenith/apply_zenith_phase6.py build-staging/zenith prime
+
+      - name: Verify Phase 6 source delta
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git diff --check
+          test -f src/MphRead/Mods/MapGen/Geometry/MapPackedMeshCodec.cs
+          test -f src/MphRead/Mods/MapGen/MapCollisionCertification.cs
+          test -f src/MphRead/Mods/MapGen/MapCollisionCertificationAudit.cs
+          test -f src/MphRead/Mods/MapEditor/ZenithPhase6Acceptance.cs
+          grep -q 'JsonDerivedType(typeof(MapPackedMesh), "packedMesh")' src/MphRead/Mods/MapGen/Geometry/MapGeometry.cs
+          grep -q 'MapCollisionHealer.Certify' src/MphRead/Mods/MapGen/Build/MapCompiler.cs
+          grep -q 'RequireAllHunterAltForms' src/MphRead/Mods/MapGen/MapCollisionCertification.cs
+          grep -q 'zenithphase6check' src/MphRead/Mods/ModEntry.cs
+          git status --short
+
+      - name: Restore Project Prime and editor checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet restore src/MphRead/MphRead.csproj -r win-x64
+          dotnet restore tools/map-editor-check/map-editor-check.csproj
+
+      - name: Run full Map Studio core checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-restore
+
+      - name: Run Phase 5 Studio and lighting acceptance
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          $report = (Resolve-Path ..).Path + "\phase5-acceptance.json"
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- -noupdate -studioexperiencecheck -studioexperienceoutput $report
+          if ($LASTEXITCODE -ne 0) { throw "Phase 5 acceptance failed." }
+          if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Phase 5 acceptance report did not pass." }
+
+      - name: Run Phase 6 compact geometry and all-alt-form collision acceptance
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          $report = (Resolve-Path ..).Path + "\phase6-acceptance.json"
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- -noupdate -zenithphase6check -zenithphase6output $report | Tee-Object ../phase6-acceptance-console.json
+          if ($LASTEXITCODE -ne 0) { throw "Phase 6 acceptance failed." }
+          if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Phase 6 acceptance report did not pass." }
+          if (-not (Select-String -Path $report -Pattern 'all-hunter alt-form' -Quiet)) { throw "All-hunter collision evidence is missing." }
+
+      - name: Publish Windows x64 client
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish
+
+      - name: Verify published Phase 5 and Phase 6 contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "./publish/ProjectPrime.exe" -aimapengineerhelp | Tee-Object -FilePath "publish/AI_MAP_ENGINEER_TOOLS.json"
+          if ($LASTEXITCODE -ne 0) { throw "AI Map Engineer help command failed." }
+          $phase5 = (Resolve-Path publish).Path + "\STUDIO_LIGHTING_ACCEPTANCE.json"
+          & "./publish/ProjectPrime.exe" -studioexperiencecheck -studioexperienceoutput $phase5 | Tee-Object -FilePath "publish/STUDIO_LIGHTING_ACCEPTANCE_CONSOLE.json"
+          if ($LASTEXITCODE -ne 0) { throw "Published Phase 5 acceptance failed." }
+          $phase6 = (Resolve-Path publish).Path + "\ZENITH_PHASE6_ACCEPTANCE.json"
+          & "./publish/ProjectPrime.exe" -zenithphase6check -zenithphase6output $phase6 | Tee-Object -FilePath "publish/ZENITH_PHASE6_ACCEPTANCE_CONSOLE.json"
+          if ($LASTEXITCODE -ne 0) { throw "Published Phase 6 acceptance failed." }
+          if (-not (Select-String -Path $phase6 -Pattern '"Passed": true' -Quiet)) { throw "Published Phase 6 report did not pass." }
+
+      - name: Write launcher and Phase 6 guide
+        shell: pwsh
+        run: |
+          @"
+          Project Prime Universal Map Studio — Zenith Phase 6
+
+          Added:
+          - compact zlib/base64 packed geometry for source maps beyond editable MapMesh limits
+          - exact 20.12 world coordinates and signed 1.11.4 UV storage
+          - final-collision build certification rather than preview-only checks
+          - biped floor, traversal, jump and contact-density audits
+          - spawn clearance checks
+          - every hunter alt-form radius and vertical offset checked against spawns, navigation edges, walkable surfaces and jump trajectories
+          - build refusal when strict certification finds a collision risk
+          - Phase 5 Beginner AI and real-time lighting retained
+
+          Run Start_ProjectPrime.cmd. The Zenith .ppmap belongs in the maps folder.
+          "@ | Set-Content -Encoding UTF8 publish/ZENITH_PHASE6_README.txt
+          @"
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          ProjectPrime.exe -launcher -noupdate -userdata "%cd%\UserData"
+          "@ | Set-Content -Encoding ASCII publish/Start_ProjectPrime.cmd
+
+      - name: Upload Zenith Phase 6 Windows client
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime-Zenith-Phase6-Windows-x64
+          path: publish/**
+          if-no-files-found: error
+          retention-days: 30
