@@ -21,6 +21,8 @@ jobs:
         run: npm run test:maps
       - name: Hunter License contract tests
         run: npm run test:license
+      - name: Hunter sign-in redirect tests
+        run: npm run test:auth
       - name: Public Hunter leaderboard contracts
         run: npm run test:leaderboards
       - name: Build site
