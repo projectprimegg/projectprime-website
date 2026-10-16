@@ -132,9 +132,10 @@ export default async function LeaderboardsPage({
               href={href({ metric, mode }, page + 1)}>Next</Link> : <span />}
         </nav>
       </>}
-      <p className="helper career-disclosure">Hunter License names and public profile links
-        appear only after a player opts in. Private accounts contribute anonymous
-        career positions without exposing their profile or login identity.</p>
+      <p className="helper career-disclosure">Hunter names and limited public
+        profiles appear by default. Players can opt out from their License
+        account screen in-game or on the website; opted-out entries retain
+        anonymous career positions without exposing their identity.</p>
     </main>
   );
 }
