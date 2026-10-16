@@ -1,0 +1,104 @@
+name: Freeze Tag Playable Test
+
+on:
+  push:
+    branches: ["freeze-tag-playable-test"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout CI carrier
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Clone exact Project Prime baseline
+        shell: pwsh
+        run: |
+          git clone https://github.com/AntiNotAnti/Project-Prime.git prime
+          Set-Location prime
+          git checkout ea017489bfc1299af1c85dbb3f1aa185d32a32f8
+          git rev-parse HEAD
+
+      - name: Apply Freeze Tag integration
+        shell: pwsh
+        run: |
+          python _ci/freeze_tag_patch.py prime
+          Select-String -Path prime/src/MphRead/Formats/Formats.cs -Pattern 'FreezeTag = 27'
+          Select-String -Path prime/src/MphRead/Mods/Network/MatchTypeCatalog.cs -Pattern 'Freeze Tag'
+
+      - name: Compile Project Prime client
+        shell: pwsh
+        run: dotnet build prime/src/MphRead/MphRead.csproj -c Release -r win-x64
+
+      - name: Publish self-contained Windows client
+        shell: pwsh
+        run: |
+          dotnet publish prime/src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:InformationalVersion=FreezeTag-Test-1 -o publish/client
+
+      - name: Publish matching Windows server
+        shell: pwsh
+        run: |
+          dotnet publish prime/src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:MphReadServer=true -p:InformationalVersion=FreezeTag-Test-1 -o publish/server
+
+      - name: Package playable test
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item publish/client/* package/ -Recurse -Force
+          Copy-Item publish/server/ProjectPrimeServer.exe package/ProjectPrimeServer.exe -Force
+          Copy-Item prime/FREEZE_TAG_TEST_BUILD.txt package/FREEZE_TAG_TEST_BUILD.txt -Force
+          @'
+          PROJECT PRIME - FREEZE TAG PLAYABLE TEST
+
+          This is the actual Project Prime Windows client, not the earlier HTML test.
+
+          1. Extract the ZIP.
+          2. Run ProjectPrime.exe.
+          3. Configure your normal Project Prime game-data path if needed.
+          4. Open Offline Play or Host Game.
+          5. Select "Freeze Tag".
+          6. Choose a Teams matchup (1v1, 2v2, 3v3, 4v4, or Teams).
+          7. Pick a normal multiplayer map and start.
+
+          TEST TARGET
+          - 0 HP freezes instead of normal death.
+          - Frozen body remains in the Project Prime world and can be knocked around.
+          - Stay near a frozen teammate to thaw them.
+          - One rescuer: ~3.5 seconds.
+          - Multiple rescuers accelerate thaw.
+          - Entire enemy team frozen wins the round.
+          - First team to 5 rounds wins.
+          - Final 30 seconds grants a late-round Double Damage pressure mechanic.
+          - Native Freeze Tag scoreboard labels show FREEZES / FROZEN.
+          - Built-in Project Prime ice/freeze and break-freeze audio are used.
+          - Normal team Battle entity layers are used so ordinary MP maps can launch.
+
+          IMPORTANT TEST SCOPE
+          This is the first actual-engine Freeze Tag test build. It is built from Project Prime
+          commit ea017489bfc1299af1c85dbb3f1aa185d32a32f8. It is not the browser simulator.
+          '@ | Set-Content package/START_HERE_FREEZE_TAG.txt
+          if (!(Test-Path package/ProjectPrime.exe)) { throw 'ProjectPrime.exe missing' }
+          if (!(Test-Path package/ProjectPrimeServer.exe)) { throw 'ProjectPrimeServer.exe missing' }
+          Compress-Archive -Path package/* -DestinationPath ProjectPrime_FreezeTag_Playable_Test_win-x64.zip -CompressionLevel Optimal
+          Get-FileHash ProjectPrime_FreezeTag_Playable_Test_win-x64.zip -Algorithm SHA256 | Format-List
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $z=[IO.Compression.ZipFile]::OpenRead((Resolve-Path ProjectPrime_FreezeTag_Playable_Test_win-x64.zip))
+          $names=$z.Entries.FullName
+          $z.Dispose()
+          if ($names -notcontains 'ProjectPrime.exe' -or $names -notcontains 'ProjectPrimeServer.exe') { throw 'archive missing executable' }
+
+      - name: Upload playable test
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime_FreezeTag_Playable_Test_win-x64
+          path: ProjectPrime_FreezeTag_Playable_Test_win-x64.zip
+          if-no-files-found: error
+          retention-days: 7
