@@ -1,0 +1,84 @@
+name: Universal Map Studio v20 Windows build
+
+on:
+  push:
+    branches:
+      - ci/universal-map-studio-v20
+    paths:
+      - ".github/workflows/universal-map-studio-v20.yml"
+      - "build-staging/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout build staging
+        uses: actions/checkout@v4
+
+      - name: Checkout official Project Prime 0.1.53
+        uses: actions/checkout@v4
+        with:
+          repository: AntiNotAnti/Project-Prime
+          ref: 91b1c0c6c44e8c90effd250729709f791a84765e
+          path: prime
+
+      - name: Setup .NET 10.0.401
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Decode source patches
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path patches | Out-Null
+          [IO.File]::WriteAllBytes("patches/v19-code-only.patch.xz", [Convert]::FromBase64String((Get-Content "build-staging/v19-code-only.patch.xz.b64" -Raw).Trim()))
+          [IO.File]::WriteAllBytes("patches/v19-to-v20.patch.xz", [Convert]::FromBase64String((Get-Content "build-staging/v19-to-v20.patch.xz.b64" -Raw).Trim()))
+          [IO.File]::WriteAllBytes("patches/universal-phase2.patch.xz", [Convert]::FromBase64String((Get-Content "build-staging/universal-phase2.patch.xz.b64" -Raw).Trim()))
+          7z x -y "patches/v19-code-only.patch.xz" -o"patches/v19" | Out-Null
+          7z x -y "patches/v19-to-v20.patch.xz" -o"patches/v20" | Out-Null
+          7z x -y "patches/universal-phase2.patch.xz" -o"patches/phase2" | Out-Null
+
+      - name: Apply custom v19, v20 and Universal Map Studio changes
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git apply --whitespace=nowarn ../patches/v19/v19-code-only.patch
+          git apply --whitespace=nowarn ../patches/v20/v19-to-v20.patch
+          git apply --whitespace=nowarn ../patches/phase2/ProjectPrime_Universal_AI_Map_Studio_v20_Phase2.patch
+          git diff --check
+          git status --short
+
+      - name: Build and publish Windows x64 client
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet restore src/MphRead/MphRead.csproj -r win-x64
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true -o ../publish
+
+      - name: Write build provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          @"
+          Universal AI Map Studio v20 test client
+          Official base: AntiNotAnti/Project-Prime 91b1c0c6c44e8c90effd250729709f791a84765e (v0.1.53)
+          Custom reconstruction: v19 code-only patch -> v19-to-v20 patch -> Universal Map Studio Phase 2
+          Build: Windows x64, self-contained, .NET SDK 10.0.401
+          NOTE: open-source custom HUD font/audio asset additions from the full v19 source patch are not reconstructed in this CI branch. This build is specifically for testing the Universal Map Studio integration.
+          "@ | Set-Content -Encoding UTF8 publish/UNIVERSAL_MAP_STUDIO_TEST_BUILD.txt
+
+      - name: Upload Windows test client
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime-Universal-Map-Studio-v20-test
+          path: publish/**
+          if-no-files-found: error
+          retention-days: 30
