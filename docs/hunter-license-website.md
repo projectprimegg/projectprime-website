@@ -24,9 +24,13 @@ career statistics in the public directory and profile card. The change is
 eligible matches may still appear in the directory with zeroed totals.
 
 The signed-in owner can turn the public profile switch **off** to opt out on
-`/license`. The in-game Hunter License Account screen also provides an opt-out
-for anonymous/guest Hunters without a website recovery identity.
-Explicit `is_public=false` is durable and is never changed by a migration.
+`/license`. Before backend activation, the website also offers
+**Save My Private Opt-Out** while profiles are still private; this creates
+an explicit `false` choice so existing accounts do not become public
+during the migration. The in-game Hunter License Account screen likewise
+offers **Save Private Preference** for anonymous/guest Hunters without
+a website recovery identity. A saved `is_public=false` is durable and
+never changed by a migration.
 Opted-out users appear as "Private Hunter" in authoritative leaderboards,
 with their name/public ID hidden; private match history stays private.
 
