@@ -1,72 +1,66 @@
-# Website Hunter License integration
+# Website Hunter License and public visibility
 
-The /license website page shares **exactly the same Supabase project
-identity** as Project Prime and the existing /maps creator account UI.
-No new password database, player table, or client-side career submission.
+The /license page uses the same Supabase Auth identity as Project Prime and
+Community map publishing. It does not create a second career database.
 
-## Authenticated snapshot
+## Account and private data
 
-- Browser Supabase session is passed over same-origin HTTPS to
-  POST /api/license/snapshot with Cache-Control: no-store.
-- Vercel forwards the JWT to the game's existing
-  POST /functions/v1/hunter-license Edge Function.
-- That function validates the session server-side and returns the
-  authoritative profile, trusted career aggregates, recent accepted
-  matches and cosmetic loadouts from the private Prime tables.
-- Missing player rows are seeded by the existing Hunter License bridge
-  with default name "Hunter". Existing profiles and their names are
-  **never overwritten** by the website read.
-- No email, access token, database credential or raw match history is
-  placed into static HTML, cache, or a public endpoint.
-- The website displays the most recent 25 accepted records privately,
-  mirroring the game; match results are not publicly searchable.
+The private `POST /api/license/snapshot` relay validates the current signed-in
+Supabase session through the existing Hunter License Edge Function, returning
+only that user's full career snapshot, 25 recent accepted matches and personal
+cosmetic loadouts. The website does not cache this response or expose email,
+authentication tokens or detailed match logs to anonymous visitors.
 
-## Sign-in choices
+Sign-in supports passwordless email, linked password or configured
+Google/GitHub/Discord providers. A fresh website identity does not
+automatically take ownership of an unrelated in-game guest license.
 
-The account UI defaults to a single passwordless email action, with a clear
-password alternative for previously secured licenses plus Google/GitHub/Discord.
-Only enabled Supabase Auth providers work. Email signup creates a new identity
-when the address is new, and never merges a separate in-game guest automatically.
-Secure the existing guest from the game first to retain its career.
+## Public-by-default profile and owner opt-out
 
-Website email and OAuth redirects use canonical `projectprime.gg` URLs rather
-than inheriting the development browser origin. The Supabase Auth **Site URL**
-must be `https://projectprime.gg`, with exact `/license` and
-`/maps/account` callbacks allowed. Ensure mail templates honor the
-confirmation URL. Local auth tests require an explicit
-`NEXT_PUBLIC_HUNTER_AUTH_ORIGIN` override. Expired/rejected links show a safe
-retry message without displaying raw error fragments.
+By default, newly-created and existing Hunter Licenses **with an authenticating
+owner** and without a stored preference expose their nickname, favorite Hunter
+and limited lifetime career statistics in the public directory and profile card.
+Legacy License rows without an Auth account remain hidden because their owners
+cannot use opt-out controls. The change is
+**retroactive for accounts with no saved preference**. Profiles with zero
+eligible matches may still appear in the directory with zeroed totals.
 
-A new user/account cannot automatically claim an unrelated anonymous
-game Hunter License. Link the original game identity to the chosen
-provider inside the game before signing into the website, or the new
-account will display a separate empty career. Never merge users by
-matching display names.
+The signed-in owner can turn the public profile switch **off** to opt out on
+`/license`. Before backend activation, the website also offers
+**Save My Private Opt-Out** while profiles are still private; this creates
+an explicit `false` choice so existing accounts do not become public
+during the migration. The in-game Hunter License Account screen likewise
+offers **Save Private Preference** for anonymous/guest Hunters without
+a website recovery identity. A saved `is_public=false` is durable and
+never changed by a migration.
+Opted-out users appear as "Private Hunter" in authoritative leaderboards,
+with their name/public ID hidden; private match history stays private.
 
-## Public profile preference
+The website invokes only these authenticated owner-scoped Supabase RPCs:
 
-Visibility is **private by default**. The authenticated website calls
-owner-scoped public PostgREST RPCs to read and update the setting:
+- `project_prime_hunter_visibility()`
+- `project_prime_set_hunter_visibility(p_public boolean)`
 
-- project_prime_hunter_visibility()
-- project_prime_set_hunter_visibility(p_public boolean)
+Neither accepts a player UUID. They cannot edit career counters or another
+Hunter's visibility. The visible toggle is disabled when the RPC cannot
+confirm state, rather than inventing a default on a failed connection.
 
-The RPC is not available until the game repo's privacy migration is
-applied. The website keeps visibility disabled and clearly communicates
-the missing backend until deployment. The caller never submits a
-player UUID and cannot modify career records.
+Public directory, leaderboard and public profile requests use `no-store`
+so a new request reflects an opt-out without a server cache delay. Browser
+pages already viewed elsewhere cannot be remotely erased retroactively.
 
-Private users may contribute anonymous leaderboard positions, but
-their name, account UUID, profile identifier and recent match list
-are not publicly exposed. Public opt-in enables a limited career card.
+## Deployment order
 
-## Acceptance
+1. Release the game UI opt-out, especially for guest/anonymous accounts.
+2. Merge and deploy the website public-by-default copy.
+3. Apply `20261016214500_hunter_public_default_opt_out.sql` and deploy the
+   matching `hunter-leaderboard` Edge Function on the **same** Supabase project.
+4. Verify the RPC retains false overrides and has no anon grants.
+5. Test a newly public profile with zero matches, a name search, anonymous
+   leaderboard masking, opt-out (old profile URL returns 404), and opt-in.
+6. Verify emails, real auth UUIDs, raw match evidence and private match logs
+   never appear in public responses.
 
-1. Sign in with the **same** account as a recovered game License.
-2. Compare Hunter ID, nickname, favorite Hunter, career totals and
-   accepted recent matches with the game.
-3. Confirm a new identity is not mistaken for an old guest account.
-4. Fail unauthenticated/mismatched-origin snapshot requests.
-5. Confirm cached/static website routes never contain private data.
-6. Exercise visibility toggle; anon users must not call RPCs.
-7. Verify opted-out names disappear from public views after cache TTL.
+Do not silently enable public presentation on live backend before players
+can access the opt-out controls. The database/Edge rollout will change the
+visibility of existing accounts without saved preferences.

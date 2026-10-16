@@ -33,8 +33,8 @@ export default async function PublicHunterPage({
         <span className="eyebrow">PUBLIC HUNTER CAREER</span>
         <h1>{hunter.display_name}</h1>
         <p>Favorite Hunter · {hunterName(hunter.favorite_hunter)}</p>
-        <p>Only lifetime, career-eligible statistics intentionally made public
-          are displayed here.</p>
+        <p>Public-by-default Hunter License. Career totals include only
+          eligible server-accepted matches. Private match history is excluded.</p>
       </section>
       <section className="license-section">
         <div className="license-section-heading">

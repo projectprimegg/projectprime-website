@@ -54,6 +54,7 @@ test("leaderboard request always uses bounded filters and validates origin data"
     assert.equal(params.get("only_public"), "1");
     assert.equal(params.get("q"), "Samus");
     assert.equal(options.redirect, "error");
+    assert.equal(options.cache, "no-store");
     return new Response(JSON.stringify({
       source: "trusted_career", page: 2, page_size: 25, total: 27,
       ranked_available: false,
@@ -77,4 +78,61 @@ test("non-public profile response does not expose a Hunter detail card", async (
     assert.equal(await getPublicHunter(id),null);
     assert.equal(await getPublicHunter("../traversal"),null);
   } finally { globalThis.fetch=prior; }
+});
+
+test("public Hunter registry includes an empty-career License, and excludes private account fields", async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(new URL(url).searchParams.get("only_public"), "1");
+    assert.equal(options.cache, "no-store");
+    return new Response(JSON.stringify({
+      source: "trusted_career", page: 1, page_size: 25, total: 1,
+      ranked_available: false,
+      entries: [{ rank: 1, public_id: id, display_name: "New Hunter",
+        is_public: true, matches: 0, wins: 0, kills: 0, deaths: 0 }],
+    }), { status: 200 });
+  };
+  try {
+    const directory = await browseHunterLeaderboard({ onlyPublic: true });
+    assert.equal(directory.total, 1);
+    assert.equal(directory.entries[0].public_id, id);
+    assert.equal(directory.entries[0].matches, 0);
+  } finally { globalThis.fetch = previous; }
+});
+
+test("direct public card is uncached and exposes only the approved Hunter fields", async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.cache, "no-store");
+    return new Response(JSON.stringify({
+      public_id: id, display_name: "Visible Hunter",
+      favorite_hunter: 2, matches: 0, wins: 0,
+      email: "private@example.invalid",
+      player_id: "11111111-1111-4111-8111-111111111111",
+    }), { status: 200 });
+  };
+  try {
+    const data = await getPublicHunter(id);
+    assert.equal(data?.display_name, "Visible Hunter");
+    assert.equal(data?.matches, 0);
+    assert.equal(Object.hasOwn(data, "email"), false);
+    assert.equal(Object.hasOwn(data, "player_id"), false);
+  } finally { globalThis.fetch = previous; }
+});
+
+test("public directory can paginate more than 2,500 licenses without relaxing ranked results", async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const params = new URL(url).searchParams;
+    const page = Number(params.get("page"));
+    assert.equal(page, params.get("only_public") === "1" ? 201 : 100);
+    return new Response(JSON.stringify({
+      source: "trusted_career", page, page_size: 25, total: 5020,
+      ranked_available: false, entries: [],
+    }), { status: 200 });
+  };
+  try {
+    assert.equal((await browseHunterLeaderboard({ onlyPublic: true, page: 201 })).page, 201);
+    assert.equal((await browseHunterLeaderboard({ page: 201 })).page, 100);
+  } finally { globalThis.fetch = previous; }
 });

@@ -20,6 +20,7 @@ export function HunterLicenseDashboard() {
   const [error, setError] = useState("");
   const [visibility, setVisibility] = useState<boolean | null>(null);
   const [privacyError, setPrivacyError] = useState("");
+  const [privacyNotice, setPrivacyNotice] = useState("");
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const accessToken = session?.access_token;
 
@@ -64,12 +65,19 @@ export function HunterLicenseDashboard() {
 
   async function setPublic(next: boolean) {
     if (!snapshot || visibility === null) return;
-    setPrivacyBusy(true); setPrivacyError("");
+    setPrivacyBusy(true); setPrivacyError(""); setPrivacyNotice("");
     const { data, error: failure } = await client.rpc("project_prime_set_hunter_visibility", {
       p_public: next,
     });
     if (failure) setPrivacyError(failure.message);
-    else setVisibility(data === true);
+    else if (typeof data !== "boolean" || data !== next)
+      setPrivacyError("The server did not confirm your visibility preference. Please retry.");
+    else {
+      setVisibility(next);
+      setPrivacyNotice(next
+        ? "Your public profile is now enabled."
+        : "Your private opt-out has been saved to your Hunter License.");
+    }
     setPrivacyBusy(false);
   }
 
@@ -152,22 +160,31 @@ export function HunterLicenseDashboard() {
 
         <section className="panel license-privacy">
           <span className="mini-tag">PROFILE VISIBILITY</span>
-          <h2>Choose what other Hunters can see.</h2>
-          <p>When private, leaderboard scores are anonymous and your account
-            identifier, name and match history are not published. Opting in shows
-            your gamer name and a limited public career card, never your email
-            or private recent matches.</p>
+          <h2>Public by default. You're in control.</h2>
+          <p>Your Hunter nickname, favorite Hunter and accepted lifetime career
+            statistics are public by default. Turn the switch off to opt out:
+            other Hunters will no longer see your name or public License profile.
+            Your email, account UUID, sign-in details, cosmetics and private match
+            history are never published.</p>
           <label className="license-visibility-switch">
             <input type="checkbox" checked={visibility === true}
               disabled={visibility === null || privacyBusy}
               onChange={event => void setPublic(event.target.checked)} />
-            <span>Show my Hunter name and public career profile</span>
+            <span>Keep my Hunter License publicly visible (turn off to opt out)</span>
           </label>
           {privacyError && <p className="maps-error" role="status">{privacyError}</p>}
           {visibility === true &&
-            <p className="maps-success">Your Hunter is visible in public directory searches after cache refresh.</p>}
-          {visibility === false &&
-            <p className="helper">Your public profile is private by default.</p>}
+            <p className="maps-success">Your public Hunter profile is visible. Switch off anytime to opt out.</p>}
+          {visibility === false && <>
+            <p className="helper">Your profile is currently private. Save an
+              explicit opt-out now to remain private when the public-default
+              policy activates, or use the switch above to become public.</p>
+            <button className="button button-ghost" type="button"
+              disabled={privacyBusy} onClick={() => void setPublic(false)}>
+              Save My Private Opt-Out
+            </button>
+          </>}
+          {privacyNotice && <p className="maps-success" role="status">{privacyNotice}</p>}
         </section>
 
         <section className="license-section">

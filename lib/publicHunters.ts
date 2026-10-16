@@ -122,17 +122,16 @@ function apiUrl(path: string) {
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   "sb_publishable_EVT45OPl638kA_j8vZ0ebg_sw3aWaVz";
 
-async function getResponse(url: URL, noStore = false) {
-  const options: RequestInit & { next?: { revalidate: number } } = {
+async function getResponse(url: URL) {
+  // Visibility opt-outs must take effect on the very next request,
+  // including leaderboard names and directory results. Never cache a
+  // formerly public name after its owner has chosen to hide it.
+  return fetch(url, {
     headers: { apikey: publishableKey, Accept: "application/json" },
     redirect: "error",
+    cache: "no-store",
     signal: AbortSignal.timeout(12000),
-  };
-  // A public profile opt-out should invalidate exact-profile lookups without
-  // leaving a cached, formerly opted-in page visible for another minute.
-  if (noStore) options.cache = "no-store";
-  else options.next = { revalidate: 60 };
-  return fetch(url, options);
+  });
 }
 
 export async function browseHunterLeaderboard(options: {
@@ -144,7 +143,10 @@ export async function browseHunterLeaderboard(options: {
 } = {}): Promise<Leaderboard> {
   const metric = isBoardMetric(options.metric) ? options.metric : "wins";
   const mode = isBoardMode(options.mode) ? options.mode : "all";
-  const page = Math.max(1, Math.min(100, Math.floor(options.page || 1)));
+  // Public directory includes Hunters with no matches, so it can exceed
+  // the original 2,500-position lifetime leaderboard window.
+  const maxPage = options.onlyPublic && mode === "all" ? 500 : 100;
+  const page = Math.max(1, Math.min(maxPage, Math.floor(options.page || 1)));
   const params = new URLSearchParams({ metric, mode, page: String(page) });
   if (options.search) params.set("q", options.search.slice(0, 40));
   if (options.onlyPublic) params.set("only_public", "1");
@@ -169,7 +171,7 @@ export async function browseHunterLeaderboard(options: {
 export async function getPublicHunter(publicId: string): Promise<PublicHunterProfile | null> {
   if (!isPublicHunterId(publicId)) return null;
   const response = await getResponse(
-    apiUrl("/functions/v1/hunter-leaderboard?hunter=" + publicId), true);
+    apiUrl("/functions/v1/hunter-leaderboard?hunter=" + publicId));
   if (response.status === 404) return null;
   if (!response.ok) throw new Error("Hunter career service returned " + response.status);
   const raw: unknown = await response.json();
