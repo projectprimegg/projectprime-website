@@ -61,7 +61,7 @@ namespace MphRead.Mods.MapEditor
                     "inspect_map" => InspectMap(document),
                     "inspect_selection" => InspectSelection(document),
                     "inspect_geometry" => InspectGeometry(document),
-                    "inspect_collision" => InspectCollision(document, cancellation),
+                    "inspect_collision" => InspectCollision(document, request.Arguments, cancellation),
                     "inspect_materials" => InspectMaterials(document),
                     "inspect_sources" => InspectSources(document),
                     "validate_map" => ValidateMap(document),
@@ -182,7 +182,7 @@ namespace MphRead.Mods.MapEditor
         }
 
         private static AiMapEngineerResult InspectCollision(
-            MapDocument document, CancellationToken cancellation)
+            MapDocument document, JsonObject? args, CancellationToken cancellation)
         {
             MapDefinition d = document.CaptureBuildSnapshot().CreateDefinition();
             int authoredCollisionObjects = d.Geometry.OfType<MapMesh>().Count(m => m.CollisionOnly);
@@ -196,19 +196,19 @@ namespace MphRead.Mods.MapEditor
                 resolved = d.Collision.Resolve()
             };
 
-            MapCompilation compilation = MapCompiler.Compile(d, cancellation);
-            document.Diagnostics = compilation.Validation;
-            BuiltMap? map = compilation.Map;
-            return AiMapEngineerResult.Ok("inspect_collision",
-                map == null ? "Collision source inspected; compile did not produce runtime collision."
-                    : $"Compiled collision contains {map.Solid.Count} face(s).",
-                new
+            object? compiled = null;
+            string summary = $"Found {authoredCollisionObjects} authored collision object(s) and "
+                + (d.Collision == null ? "no dedicated collision source." : "a dedicated collision source.");
+
+            if (ReadBool(args, "compile"))
+            {
+                MapCompilation compilation = MapCompiler.Compile(d, cancellation);
+                document.Diagnostics = compilation.Validation;
+                BuiltMap? map = compilation.Map;
+                compiled = new
                 {
-                    dedicatedSource = source,
-                    authoredCollisionObjects,
-                    authoredCollisionFaces,
-                    compiled = map != null,
-                    compiledCollisionFaces = map?.Solid.Count ?? 0,
+                    succeeded = map != null && compilation.Validation.IsValid,
+                    collisionFaces = map?.Solid.Count ?? 0,
                     importedCollisionFaces = map?.ImportedCollisionFaceCount ?? 0,
                     collisionHealth = map?.CollisionHealth,
                     repairs = map?.CollisionRepairs.Select(r => new
@@ -219,7 +219,19 @@ namespace MphRead.Mods.MapEditor
                         points = r.Points
                     }).ToArray(),
                     diagnostics = compilation.Validation.Diagnostics
-                });
+                };
+                summary = map == null
+                    ? "Collision source inspected; requested compile did not produce runtime collision."
+                    : $"Compiled collision contains {map.Solid.Count} face(s).";
+            }
+
+            return AiMapEngineerResult.Ok("inspect_collision", summary, new
+            {
+                dedicatedSource = source,
+                authoredCollisionObjects,
+                authoredCollisionFaces,
+                compiled
+            });
         }
 
         private static AiMapEngineerResult InspectMaterials(MapDocument document)
