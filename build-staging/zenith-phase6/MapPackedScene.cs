@@ -48,7 +48,7 @@ public sealed class MapPackedScene
             Source,
             Path.Combine(CustomRooms.MapDirectory, Source),
             Path.Combine(Mods.Launcher.GameFiles.Root, Source)
-        }.Where(path => path != null)!)
+        }.OfType<string>())
         {
             if (File.Exists(candidate)) return candidate;
         }
