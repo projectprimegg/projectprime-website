@@ -26,6 +26,10 @@ namespace MphRead.Mods.MapEditor
         {
             new AiMapEngineerTool("inspect_map", false, "Summarize the current map and editor state."),
             new AiMapEngineerTool("inspect_selection", false, "Inspect selected objects and positions."),
+            new AiMapEngineerTool("inspect_geometry", false, "Inspect authored geometry, mesh density, layers and collision-only meshes."),
+            new AiMapEngineerTool("inspect_collision", false, "Inspect dedicated/authored collision and compiled collision health when available."),
+            new AiMapEngineerTool("inspect_materials", false, "Inspect material channels, animation and usage counts."),
+            new AiMapEngineerTool("inspect_sources", false, "Inspect import/model/collision source provenance and packaged assets."),
             new AiMapEngineerTool("validate_map", false, "Run the shared Project Prime map validator."),
             new AiMapEngineerTool("compile_map", false, "Compile the current map in memory."),
             new AiMapEngineerTool("run_map_audit", false, "Run the existing runtime map audit harness."),
@@ -56,6 +60,10 @@ namespace MphRead.Mods.MapEditor
                 {
                     "inspect_map" => InspectMap(document),
                     "inspect_selection" => InspectSelection(document),
+                    "inspect_geometry" => InspectGeometry(document),
+                    "inspect_collision" => InspectCollision(document, cancellation),
+                    "inspect_materials" => InspectMaterials(document),
+                    "inspect_sources" => InspectSources(document),
                     "validate_map" => ValidateMap(document),
                     "compile_map" => CompileMap(document, cancellation),
                     "run_map_audit" => await RunAudit(document, cancellation).ConfigureAwait(false),
@@ -115,6 +123,176 @@ namespace MphRead.Mods.MapEditor
             return AiMapEngineerResult.Ok("inspect_selection",
                 objects.Length == 0 ? "No selected objects." : $"Inspected {objects.Length} selected object(s).",
                 new { objects });
+        }
+
+        private static AiMapEngineerResult InspectGeometry(MapDocument document)
+        {
+            MapDefinition d = document.CaptureBuildSnapshot().CreateDefinition();
+            var geometry = d.Geometry.Select(g =>
+            {
+                int vertices = 0, faces = 0;
+                bool collisionOnly = false;
+                if (g is MapMesh mesh)
+                {
+                    vertices = mesh.Vertices.Count;
+                    faces = mesh.Faces.Count;
+                    collisionOnly = mesh.CollisionOnly;
+                }
+                else if (g is MapConvexBrush convex)
+                {
+                    vertices = convex.Vertices.Count;
+                    faces = convex.Faces.Count;
+                }
+                else if (g is MapBezierPatch patch)
+                {
+                    vertices = patch.ControlPoints.Count;
+                    faces = Math.Max(0, patch.Columns - 1) * Math.Max(0, patch.Rows - 1);
+                }
+
+                return new
+                {
+                    g.Id,
+                    g.Label,
+                    kind = g.GetType().Name,
+                    g.Layer,
+                    g.Solid,
+                    collisionOnly,
+                    g.Material,
+                    vertices,
+                    faces,
+                    position = g.Transform.Position,
+                    scale = g.Transform.Scale
+                };
+            }).ToArray();
+
+            return AiMapEngineerResult.Ok("inspect_geometry",
+                $"Inspected {geometry.Length} authored geometry object(s).",
+                new
+                {
+                    count = geometry.Length,
+                    byKind = geometry.GroupBy(g => g.kind)
+                        .ToDictionary(g => g.Key, g => g.Count()),
+                    byLayer = geometry.GroupBy(g => g.Layer ?? "")
+                        .ToDictionary(g => g.Key, g => g.Count()),
+                    meshVertices = geometry.Sum(g => g.vertices),
+                    meshFaces = geometry.Sum(g => g.faces),
+                    collisionOnlyObjects = geometry.Count(g => g.collisionOnly),
+                    objects = geometry
+                });
+        }
+
+        private static AiMapEngineerResult InspectCollision(
+            MapDocument document, CancellationToken cancellation)
+        {
+            MapDefinition d = document.CaptureBuildSnapshot().CreateDefinition();
+            int authoredCollisionObjects = d.Geometry.OfType<MapMesh>().Count(m => m.CollisionOnly);
+            int authoredCollisionFaces = d.Geometry.OfType<MapMesh>()
+                .Where(m => m.CollisionOnly).Sum(m => m.Faces.Count);
+
+            var source = d.Collision == null ? null : new
+            {
+                d.Collision.Source,
+                d.Collision.ZUp,
+                resolved = d.Collision.Resolve()
+            };
+
+            MapCompilation compilation = MapCompiler.Compile(d, cancellation);
+            document.Diagnostics = compilation.Validation;
+            BuiltMap? map = compilation.Map;
+            return AiMapEngineerResult.Ok("inspect_collision",
+                map == null ? "Collision source inspected; compile did not produce runtime collision."
+                    : $"Compiled collision contains {map.Solid.Count} face(s).",
+                new
+                {
+                    dedicatedSource = source,
+                    authoredCollisionObjects,
+                    authoredCollisionFaces,
+                    compiled = map != null,
+                    compiledCollisionFaces = map?.Solid.Count ?? 0,
+                    importedCollisionFaces = map?.ImportedCollisionFaceCount ?? 0,
+                    collisionHealth = map?.CollisionHealth,
+                    repairs = map?.CollisionRepairs.Select(r => new
+                    {
+                        kind = r.Kind.ToString(),
+                        r.Confidence,
+                        r.Detail,
+                        points = r.Points
+                    }).ToArray(),
+                    diagnostics = compilation.Validation.Diagnostics
+                });
+        }
+
+        private static AiMapEngineerResult InspectMaterials(MapDocument document)
+        {
+            MapDefinition d = document.CaptureBuildSnapshot().CreateDefinition();
+            int[] usage = new int[d.Materials.Count];
+            foreach (MapGeometry g in d.Geometry)
+            {
+                if (g is MapMesh mesh && mesh.FaceMaterials.Count > 0)
+                {
+                    foreach (int material in mesh.FaceMaterials)
+                        if (material >= 0 && material < usage.Length) usage[material]++;
+                }
+                else if (g.Material >= 0 && g.Material < usage.Length) usage[g.Material]++;
+            }
+
+            var materials = d.Materials.Select((m, index) => new
+            {
+                index,
+                m.Id,
+                m.Name,
+                m.Texture,
+                m.Albedo,
+                m.Normal,
+                m.SpecularRoughness,
+                m.Emissive,
+                m.SourceMaterial,
+                m.TexScale,
+                m.Alpha,
+                m.TwoSided,
+                animation = m.Animation,
+                usages = usage[index]
+            }).ToArray();
+
+            return AiMapEngineerResult.Ok("inspect_materials",
+                $"Inspected {materials.Length} material(s).",
+                new
+                {
+                    count = materials.Length,
+                    withAlbedo = materials.Count(m => !string.IsNullOrWhiteSpace(m.Albedo)),
+                    withNormal = materials.Count(m => !string.IsNullOrWhiteSpace(m.Normal)),
+                    withSpecularRoughness = materials.Count(m => !string.IsNullOrWhiteSpace(m.SpecularRoughness)),
+                    withEmissive = materials.Count(m => !string.IsNullOrWhiteSpace(m.Emissive)),
+                    animated = materials.Count(m => m.animation != null),
+                    unused = materials.Count(m => m.usages == 0),
+                    materials
+                });
+        }
+
+        private static AiMapEngineerResult InspectSources(MapDocument document)
+        {
+            MapDefinition d = document.CaptureBuildSnapshot().CreateDefinition();
+            return AiMapEngineerResult.Ok("inspect_sources", "Source provenance inspection complete.", new
+            {
+                projectPath = document.FilePath,
+                d.BaseDirectory,
+                d.BundlePath,
+                import = d.Import,
+                nativeRoom = d.NativeRoom,
+                collision = d.Collision == null ? null : new
+                {
+                    d.Collision.Source,
+                    d.Collision.ZUp,
+                    resolved = d.Collision.Resolve()
+                },
+                modelSources = d.ModelSources,
+                assets = d.Assets.Select(a => new
+                {
+                    a.Kind,
+                    a.Path,
+                    a.SourcePath
+                }).ToArray()
+            });
         }
 
         private static AiMapEngineerResult ValidateMap(MapDocument document)
