@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getVideoMetadata, projectPrimeVideos } from "@/lib/videos";
 
 const future = [
   ["Hunter Profiles", "Search players, view Hunter Licenses, career stats and match history."],
@@ -7,7 +8,11 @@ const future = [
   ["Watch", "Live tournaments, broadcasts, spectator tools and future match replays."],
 ];
 
-export default function Home() {
+export default async function Home() {
+  const latestVideos = await Promise.all(
+    [...projectPrimeVideos].slice(-3).reverse().map(getVideoMetadata),
+  );
+
   return (
     <main>
       <section className="hero">
@@ -44,6 +49,36 @@ export default function Home() {
           <div><strong>OPENGL</strong><span>Primary renderer</span></div>
           <div><strong>COMMUNITY</strong><span>Built to evolve</span></div>
         </div>
+      </section>
+
+      <section className="section">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">LATEST VIDEOS</span>
+            <h2>See Project Prime in action.</h2>
+          </div>
+          <p>Development showcases and gameplay from the current Project Prime release cycle.</p>
+        </div>
+        <div className="video-grid video-grid-home">
+          {latestVideos.map((video) => (
+            <article className="video-card panel" key={video.id}>
+              <div className="video-frame">
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${video.id}`}
+                  title={video.title}
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+              <div className="video-card-copy">
+                <span className="mini-tag">YOUTUBE</span>
+                <h3>{video.title}</h3>
+              </div>
+            </article>
+          ))}
+        </div>
+        <Link className="text-link" href="/media">View all Project Prime videos →</Link>
       </section>
 
       <section className="section">
