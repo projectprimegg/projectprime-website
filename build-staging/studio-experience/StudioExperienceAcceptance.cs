@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using MphRead.Mods.MapGen;
+using MphRead.Mods.MapGen.Universal;
 
 namespace MphRead.Mods.MapEditor;
 
@@ -26,9 +27,9 @@ public sealed record StudioAcceptanceReport(
 
 /// <summary>
 /// Deterministic, user-free acceptance runner for the Studio infrastructure.
-/// A generated OBJ/MTL and companion collision file exercise the same importer,
-/// project application, validator, compiler, guidance and persistence paths as
-/// an external map without redistributing any source-game assets.
+/// A generated OBJ/MTL and companion collision file exercise the generic importer,
+/// UniversalMap adapter/backend, project application, validator, compiler, guidance
+/// and persistence paths without redistributing source-game assets.
 /// </summary>
 public static class StudioExperienceAcceptance
 {
@@ -52,6 +53,7 @@ public static class StudioExperienceAcceptance
             if (!File.Exists(modelPath))
                 throw new FileNotFoundException("Acceptance source model was not found.", modelPath);
 
+            ImportedModel? genericImported = null;
             ImportedModel? imported = null;
             var settings = new ModelImportSettings(1, false, false, true, false,
                 ModelCollisionMode.Companion);
@@ -69,13 +71,41 @@ public static class StudioExperienceAcceptance
                         : Path.GetFileName(companion));
             });
 
-            Check(checks, "Model import completes before timeout", () =>
+            Check(checks, "Generic model import completes before timeout", () =>
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 timeout.CancelAfter(TimeSpan.FromSeconds(90));
-                imported = ModelImportService.Import(modelPath, settings, timeout.Token);
-                return (imported.Meshes.Count > 0,
-                    $"{imported.Meshes.Count} mesh(es), {imported.Materials.Count} material(s), {imported.Warnings.Count} warning(s)");
+                genericImported = ModelImportService.Import(modelPath, settings, timeout.Token);
+                return (genericImported.Meshes.Count > 0,
+                    $"{genericImported.Meshes.Count} mesh(es), {genericImported.Materials.Count} material(s), {genericImported.Warnings.Count} warning(s)");
+            });
+
+            Check(checks, "UniversalMap pipeline imports and validates", () =>
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                timeout.CancelAfter(TimeSpan.FromSeconds(90));
+                IUniversalMapAdapter adapter = UniversalMapImportService.Resolve(modelPath);
+                UniversalImportResult universal = UniversalMapImportService.Import(modelPath,
+                    new UniversalImportOptions(
+                        Scale: settings.Scale,
+                        FlipWinding: settings.FlipWinding,
+                        ZUp: settings.ZUp,
+                        FlipUvVertical: settings.FlipUvVertical,
+                        Collision: settings.Collision),
+                    timeout.Token);
+                IReadOnlyList<UniversalDiagnostic> diagnostics = UniversalMapValidator.Validate(universal.Map);
+                universal.Map.Diagnostics.AddRange(diagnostics);
+                UniversalDiagnostic[] errors = diagnostics
+                    .Where(item => item.Severity.Equals("error", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                if (errors.Length > 0)
+                    return (false, String.Join(" | ", errors.Take(8).Select(item => $"{item.Code}: {item.Message}")));
+                imported = UniversalMapProjectPrimeBackend.ToImportedModel(universal);
+                bool passed = imported.Meshes.Count > 0
+                    && imported.Meshes.Any(mesh => !mesh.CollisionOnly)
+                    && imported.Meshes.Any(mesh => mesh.CollisionOnly);
+                return (passed,
+                    $"{adapter.DisplayName} · tier {adapter.FidelityTier} · {imported.Meshes.Count} mesh(es) · {diagnostics.Count} diagnostic(s)");
             });
 
             Check(checks, "Render geometry is nonempty", () =>
@@ -96,7 +126,7 @@ public static class StudioExperienceAcceptance
 
             Check(checks, "Imported coordinates and indices are finite", () =>
             {
-                if (imported == null) return (false, "Import did not produce a model.");
+                if (imported == null) return (false, "Universal import did not produce a model.");
                 foreach (MapMesh mesh in imported.Meshes)
                 {
                     foreach (float[] vertex in mesh.Vertices)
@@ -114,7 +144,7 @@ public static class StudioExperienceAcceptance
             MapCompilation? compilation = null;
             Check(checks, "Imported model applies to an editable project", () =>
             {
-                if (imported == null) return (false, "Import did not produce a model.");
+                if (imported == null) return (false, "Universal import did not produce a model.");
                 definition = MapTemplates.Create("STUDIO_ACCEPTANCE", "blank-arena").Definition;
                 definition.BaseDirectory = root;
 
