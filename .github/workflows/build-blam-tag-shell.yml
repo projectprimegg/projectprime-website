@@ -1,0 +1,45 @@
+name: Build blam-tag-shell Linux
+
+on:
+  push:
+    branches:
+      - ci/universal-map-studio-v20
+    paths:
+      - ".github/workflows/build-blam-tag-shell.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout blam-tags
+        uses: actions/checkout@v4
+        with:
+          repository: camden-smallwood/blam-tags
+          ref: master
+          path: blam-tags
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build CLI
+        working-directory: blam-tags
+        run: cargo build --release -p blam-tag-shell
+
+      - name: Package CLI and definitions
+        run: |
+          mkdir -p out
+          cp blam-tags/target/release/blam-tag-shell out/
+          cp -R blam-tags/definitions out/definitions
+          tar -czf blam-tag-shell-linux.tar.gz -C out .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blam-tag-shell-linux
+          path: blam-tag-shell-linux.tar.gz
+          retention-days: 7
