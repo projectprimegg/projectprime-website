@@ -119,3 +119,20 @@ test("direct public card is uncached and exposes only the approved Hunter fields
     assert.equal(Object.hasOwn(data, "player_id"), false);
   } finally { globalThis.fetch = previous; }
 });
+
+test("public directory can paginate more than 2,500 licenses without relaxing ranked results", async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const params = new URL(url).searchParams;
+    const page = Number(params.get("page"));
+    assert.equal(page, params.get("only_public") === "1" ? 201 : 100);
+    return new Response(JSON.stringify({
+      source: "trusted_career", page, page_size: 25, total: 5020,
+      ranked_available: false, entries: [],
+    }), { status: 200 });
+  };
+  try {
+    assert.equal((await browseHunterLeaderboard({ onlyPublic: true, page: 201 })).page, 201);
+    assert.equal((await browseHunterLeaderboard({ page: 201 })).page, 100);
+  } finally { globalThis.fetch = previous; }
+});
