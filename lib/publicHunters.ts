@@ -122,17 +122,16 @@ function apiUrl(path: string) {
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   "sb_publishable_EVT45OPl638kA_j8vZ0ebg_sw3aWaVz";
 
-async function getResponse(url: URL, noStore = false) {
-  const options: RequestInit & { next?: { revalidate: number } } = {
+async function getResponse(url: URL) {
+  // Visibility opt-outs must take effect on the very next request,
+  // including leaderboard names and directory results. Never cache a
+  // formerly public name after its owner has chosen to hide it.
+  return fetch(url, {
     headers: { apikey: publishableKey, Accept: "application/json" },
     redirect: "error",
+    cache: "no-store",
     signal: AbortSignal.timeout(12000),
-  };
-  // A public profile opt-out should invalidate exact-profile lookups without
-  // leaving a cached, formerly opted-in page visible for another minute.
-  if (noStore) options.cache = "no-store";
-  else options.next = { revalidate: 60 };
-  return fetch(url, options);
+  });
 }
 
 export async function browseHunterLeaderboard(options: {
@@ -169,7 +168,7 @@ export async function browseHunterLeaderboard(options: {
 export async function getPublicHunter(publicId: string): Promise<PublicHunterProfile | null> {
   if (!isPublicHunterId(publicId)) return null;
   const response = await getResponse(
-    apiUrl("/functions/v1/hunter-leaderboard?hunter=" + publicId), true);
+    apiUrl("/functions/v1/hunter-leaderboard?hunter=" + publicId));
   if (response.status === 404) return null;
   if (!response.ok) throw new Error("Hunter career service returned " + response.status);
   const raw: unknown = await response.json();
