@@ -7,10 +7,14 @@ import { isMapHash, isMapId } from "@/lib/communityMaps";
 import { inspectMapPackage, mintCommunityTicket, type InspectedMap,
   type TransferProgress } from "@/lib/mapPublishing";
 
-export const MAX_PK3_SOURCE_BYTES = 128 * 1024 * 1024;
-export const MAX_CONVERTED_PACKAGE_BYTES = 512 * 1024 * 1024;
+import {
+  MAX_PK3_SOURCE_BYTES, MAX_CONVERTED_PACKAGE_BYTES,
+  PK3_UPLOAD_CHUNK_BYTES as UPLOAD_CHUNK_BYTES,
+  pk3ConversionUrl, validPk3RoomName, validConversionJobId, validPk3Level,
+} from "@/lib/pk3Contract";
+export { MAX_PK3_SOURCE_BYTES, MAX_CONVERTED_PACKAGE_BYTES,
+  pk3ConversionUrl, validPk3RoomName } from "@/lib/pk3Contract";
 const HASH_BLOCK_BYTES = 4 * 1024 * 1024;
-const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 const WORKER_POLL_MS = 2500;
 
 export type ConvertedPk3Job = {
@@ -26,31 +30,6 @@ export type ConvertedPk3Job = {
   reason: string | null;
 };
 export type Pk3Progress = TransferProgress;
-
-const JOB_ID = /^[a-f0-9-]{36}$/;
-const LEVEL = /^[A-Za-z0-9_.-]{1,80}$/;
-const ROOM = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/;
-const RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
-
-export function pk3ConversionUrl(): URL | null {
-  const source = process.env.NEXT_PUBLIC_PK3_CONVERSION_URL?.trim();
-  if (!source) return null;
-  const url = new URL(source.endsWith("/") ? source : source + "/");
-  if (url.protocol !== "https:" &&
-      !(url.protocol === "http:" &&
-        ["localhost", "127.0.0.1"].includes(url.hostname))) {
-    throw new Error("PK3 conversion requires an HTTPS service.");
-  }
-  if (url.username || url.password || url.search || url.hash) {
-    throw new Error("PK3 service address must not have credentials or query parameters.");
-  }
-  return url;
-}
-
-export function validPk3RoomName(value: string): boolean {
-  return value.length > 0 && value.length <= 40 &&
-    ROOM.test(value) && value.trim() === value && !RESERVED.test(value);
-}
 
 export async function scanPk3Levels(file: File): Promise<string[]> {
   if (!file.name.toLowerCase().endsWith(".pk3") ||
@@ -121,7 +100,7 @@ export function isSourceState(v: unknown, hash: string, bytes: number): v is Sou
 export function isConvertedJob(v: unknown): v is ConvertedPk3Job {
   if (!v || typeof v !== "object") return false;
   const x = v as Partial<ConvertedPk3Job>;
-  return typeof x.jobId === "string" && JOB_ID.test(x.jobId) &&
+  return typeof x.jobId === "string" && validConversionJobId(x.jobId) &&
     ["queued", "running", "ready", "failed"].includes(x.status || "") &&
     typeof x.roomName === "string" && Array.isArray(x.warnings);
 }
@@ -180,7 +159,7 @@ export async function submitPk3Conversion(args: {
 }): Promise<ConvertedPk3Job> {
   const { file, roomName, levelName, rightsConfirmed, client, signal, progress } = args;
   if (!pk3ConversionUrl()) throw new Error("PK3 converter is not deployed yet.");
-  if (!validPk3RoomName(roomName) || !LEVEL.test(levelName))
+  if (!validPk3RoomName(roomName) || !validPk3Level(levelName))
     throw new Error("Choose a supported map name and BSP level.");
   if (!rightsConfirmed) throw new Error("Confirm that you have rights to redistribute all source assets.");
   if (file.size <= 0 || file.size > MAX_PK3_SOURCE_BYTES)
@@ -237,7 +216,7 @@ export async function submitPk3Conversion(args: {
     const body = await completion.json() as { jobId?: string };
     jobId = body.jobId || null;
   }
-  if (!jobId || !JOB_ID.test(jobId)) throw new Error("Conversion job identity is invalid.");
+  if (!jobId || !validConversionJobId(jobId)) throw new Error("Conversion job identity is invalid.");
 
   for (;;) {
     if (signal.aborted) throw new DOMException("Conversion polling paused.", "AbortError");
@@ -271,7 +250,7 @@ export async function retrieveConvertedMap(args: {
   progress: (p: Pk3Progress) => void;
 }): Promise<InspectedMap> {
   const { job, client, signal, progress } = args;
-  if (!JOB_ID.test(job.jobId) || job.status !== "ready" ||
+  if (!validConversionJobId(job.jobId) || job.status !== "ready" ||
       !isMapHash(job.hash || "") || !isMapId(job.mapId || "")) {
     throw new Error("Invalid conversion result.");
   }
