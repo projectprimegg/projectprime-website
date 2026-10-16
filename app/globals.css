@@ -150,3 +150,21 @@ a { color: inherit; text-decoration: none; }
   .site-footer { grid-template-columns:1fr; }
   .legal { grid-column:auto; }
 }
+
+.download-option { position: relative; }
+.download-option-tags { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.recommended-download {
+  border-color: rgba(85,216,255,.72);
+  box-shadow: inset 0 0 28px rgba(85,216,255,.08), 0 0 28px rgba(85,216,255,.10);
+}
+.recommended-tag {
+  display:inline-block;
+  padding:5px 8px;
+  border:1px solid rgba(125,255,190,.35);
+  color:#9fffd0;
+  background:rgba(125,255,190,.06);
+  font-size:.62rem;
+  font-weight:900;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
