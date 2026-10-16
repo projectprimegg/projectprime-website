@@ -88,8 +88,9 @@ jobs:
           test -f src/MphRead/Mods/MapGen/MapPackedScene.cs
           test -f src/MphRead/Mods/MapGen/MapAltFormCertification.cs
           grep -q "PPMESH01" src/MphRead/Mods/MapGen/MapPackedScene.cs
+          grep -q "RequireAllHunterForms" src/MphRead/Mods/MapGen/MapPackedScene.cs
           grep -q "MapAltFormCertification.Certify" src/MphRead/Mods/MapGen/Build/MapCompiler.cs
-          grep -q "RequireAllHunterForms" src/MphRead/Mods/MapGen/MapDefinition.cs
+          grep -q "PackedScene" src/MphRead/Mods/MapGen/MapDefinition.cs
           grep -q "scene/map.ppmesh" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
           git status --short
 
