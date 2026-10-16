@@ -32,10 +32,12 @@ def main() -> int:
             bool requireAllProfiles = false)
 ''','route eligibility signature')
     replace_once(certification,
-'''            bool[] active = Enumerable.Repeat(true, Profiles.Count).ToArray();
+'''            int steps = Math.Clamp((int)MathF.Ceiling(distance / WalkingSweepStep), 1, 128);
+            bool[] active = Enumerable.Repeat(true, Profiles.Count).ToArray();
             for (int step = 0; step <= steps && active.Any(value => value); step++)
 ''',
-'''            bool[] active = Enumerable.Repeat(true, Profiles.Count).ToArray();
+'''            int steps = Math.Clamp((int)MathF.Ceiling(distance / WalkingSweepStep), 1, 128);
+            bool[] active = Enumerable.Repeat(true, Profiles.Count).ToArray();
             if (!requireAllProfiles
                 && TryFloor(collision, start + Vector3.UnitY * 1.25f, 3f, 1.35f, out float startFloor)
                 && TryFloor(collision, end + Vector3.UnitY * 1.25f, 3f, 1.35f, out float endFloor))
