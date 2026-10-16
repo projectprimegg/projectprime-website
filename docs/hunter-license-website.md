@@ -17,9 +17,11 @@ automatically take ownership of an unrelated in-game guest license.
 
 ## Public-by-default profile and owner opt-out
 
-By default, both newly-created and existing Hunter Licenses without a stored
-preference expose their in-game nickname, favorite Hunter and limited lifetime
-career statistics in the public directory and profile card. The change is
+By default, newly-created and existing Hunter Licenses **with an authenticating
+owner** and without a stored preference expose their nickname, favorite Hunter
+and limited lifetime career statistics in the public directory and profile card.
+Legacy License rows without an Auth account remain hidden because their owners
+cannot use opt-out controls. The change is
 **retroactive for accounts with no saved preference**. Profiles with zero
 eligible matches may still appear in the directory with zeroed totals.
 
