@@ -143,12 +143,6 @@ namespace MphRead.Mods.MapEditor
                     vertices = convex.Vertices.Count;
                     faces = convex.Faces.Count;
                 }
-                else if (g is MapBezierPatch patch)
-                {
-                    vertices = patch.ControlPoints.Count;
-                    faces = Math.Max(0, patch.Columns - 1) * Math.Max(0, patch.Rows - 1);
-                }
-
                 return new
                 {
                     g.Id,
