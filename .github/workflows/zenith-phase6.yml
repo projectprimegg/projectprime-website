@@ -73,7 +73,7 @@ jobs:
           python build-staging/lighting/apply_studio_lighting_phase5.py build-staging/lighting prime
           python build-staging/lighting/apply_lighting_visuals.py prime
 
-      - name: Integrate Zenith packed-scene and all-hunter certification Phase 6
+      - name: Integrate Zenith packed-scene and fine-route certification Phase 6
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -81,6 +81,8 @@ jobs:
           python build-staging/zenith-phase6/apply_zenith_compile_fixes.py prime
           python build-staging/zenith-phase6/apply_map_authoring_command.py build-staging/zenith-phase6 prime
           python build-staging/zenith-phase6/apply_packed_scene_package_reader.py prime
+          python build-staging/zenith-phase6/apply_fine_traversal_graph.py prime
+          python build-staging/zenith-phase6/apply_certification_v2.py build-staging/zenith-phase6 prime
 
       - name: Verify Phase 6 source delta
         shell: bash
@@ -93,6 +95,8 @@ jobs:
           test -f src/MphRead/Mods/MapGen/MapAuthoringCommand.cs
           grep -q "PPMESH01" src/MphRead/Mods/MapGen/MapPackedScene.cs
           grep -q "RequireAllHunterForms" src/MphRead/Mods/MapGen/MapPackedScene.cs
+          grep -q "AnalyzeFineForCertification" src/MphRead/Mods/MapGen/MapNodePacker.cs
+          grep -q "spawn-reachable fine route segments" src/MphRead/Mods/MapGen/MapAltFormCertification.cs
           grep -q "MapAltFormCertification.Certify" src/MphRead/Mods/MapGen/Build/MapCompiler.cs
           grep -q "PackedScene" src/MphRead/Mods/MapGen/MapDefinition.cs
           grep -q "scene/map.ppmesh" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
@@ -158,7 +162,8 @@ jobs:
           Project Prime Universal Map Studio — Zenith Phase 6
 
           Adds reusable packed large-scene assets and a mandatory collision gate that certifies
-          biped plus every MPH hunter alt-form profile using actual runtime radii and continuous sweeps.
+          biped plus every MPH hunter alt-form profile on the pre-decimation, spawn-reachable
+          collision graph. Jump pads are certified on their actual parabolic flight paths.
           A packed map cannot compile or package while any certified route or spawn clearance fails.
 
           Headless automation:
