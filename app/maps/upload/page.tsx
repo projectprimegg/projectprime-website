@@ -11,9 +11,11 @@ export default function UploadMapPage() {
         <h1>Share a battlefield.</h1>
         <p>Upload directly to the Project Prime Community service. No new
           game release is needed to distribute published maps.</p>
-        <p className="helper">Have a Quake .pk3 map instead? Import it in Project Prime
-          Studio, test the converted map with your own game assets, then export
-          its .ppmap package for publishing here.</p>
+        <p className="helper">Have a compiled Quake .pk3? Use the dedicated
+          conversion service to build a compatible Project Prime package.</p>
+        <Link href="/maps/upload/pk3" className="button button-ghost">
+          Convert Quake .pk3 →
+        </Link>
         <Link className="text-link" href="/maps">← Map Library</Link>
       </section>
       <MapUpload />

@@ -25,5 +25,7 @@ jobs:
         run: npm run test:auth
       - name: Public Hunter leaderboard contracts
         run: npm run test:leaderboards
+      - name: Direct PK3 publishing contracts
+        run: npm run test:pk3
       - name: Build site
         run: npm run build
