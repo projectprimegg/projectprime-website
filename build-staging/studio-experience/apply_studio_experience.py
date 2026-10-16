@@ -131,9 +131,9 @@ def main() -> int:
 
     replace_once(
         model,
-        '    private void AnalyzeModel(string path, ModelImportSettings settings, Guid? sourceId) => _ = Job("Analyzing model", async token =>\n'
+        '    private void AnalyzeModel(string path, ModelImportSettings settings, Guid? sourceId, bool universalPipeline = false) => _ = Job("Analyzing model", async token =>\n'
         '    {\n',
-        '    private void AnalyzeModel(string path, ModelImportSettings settings, Guid? sourceId)\n'
+        '    private void AnalyzeModel(string path, ModelImportSettings settings, Guid? sourceId, bool universalPipeline = false)\n'
         '    {\n'
         '        _status.Text = "Import stage 1/4 · Reading " + Path.GetFileName(path) + "…";\n'
         '        _ = Job("Analyzing model", async token =>\n'
@@ -143,14 +143,51 @@ def main() -> int:
 
     replace_once(
         model,
-        '        var result = await Task.Run(() => ModelImportService.Import(path, settings, token), token);\n'
+        '        ImportedModel result;\n'
+        '        string? universalSummary = null;\n'
+        '        if (universalPipeline)\n'
+        '        {\n'
+        '            var adapter = UniversalMapImportService.Resolve(path);\n'
+        '            var universal = await Task.Run(() => UniversalMapImportService.Import(path, new UniversalImportOptions(\n'
+        '                Scale: settings.Scale, FlipWinding: settings.FlipWinding, ZUp: settings.ZUp,\n'
+        '                FlipUvVertical: settings.FlipUvVertical, Collision: settings.Collision), token), token);\n'
+        '            var diagnostics = UniversalMapValidator.Validate(universal.Map);\n'
+        '            universal.Map.Diagnostics.AddRange(diagnostics);\n'
+        '            var errors = diagnostics.Where(d => string.Equals(d.Severity, "error", StringComparison.OrdinalIgnoreCase)).ToArray();\n'
+        '            if (errors.Length > 0)\n'
+        '                throw new InvalidDataException("UniversalMap validation failed: " + string.Join(" | ", errors.Take(8).Select(d => $"{d.Code}: {d.Message}")));\n'
+        '            result = UniversalMapProjectPrimeBackend.ToImportedModel(universal);\n'
+        '            universalSummary = $"UniversalMap · {adapter.DisplayName} · fidelity tier {adapter.FidelityTier} · {diagnostics.Count} validator diagnostics";\n'
+        '        }\n'
+        '        else\n'
+        '        {\n'
+        '            result = await Task.Run(() => ModelImportService.Import(path, settings, token), token);\n'
+        '        }\n'
         '        var hash = await Task.Run(() => MapSourceFingerprint.Hash(result.Dependencies), token);\n',
         '        using var importTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);\n'
         '        importTimeout.CancelAfter(TimeSpan.FromMinutes(2));\n'
         '        ImportedModel result;\n'
+        '        string? universalSummary = null;\n'
         '        try\n'
         '        {\n'
-        '            result = await Task.Run(() => ModelImportService.Import(path, settings, importTimeout.Token), importTimeout.Token);\n'
+        '            if (universalPipeline)\n'
+        '            {\n'
+        '                var adapter = UniversalMapImportService.Resolve(path);\n'
+        '                var universal = await Task.Run(() => UniversalMapImportService.Import(path, new UniversalImportOptions(\n'
+        '                    Scale: settings.Scale, FlipWinding: settings.FlipWinding, ZUp: settings.ZUp,\n'
+        '                    FlipUvVertical: settings.FlipUvVertical, Collision: settings.Collision), importTimeout.Token), importTimeout.Token);\n'
+        '                var diagnostics = UniversalMapValidator.Validate(universal.Map);\n'
+        '                universal.Map.Diagnostics.AddRange(diagnostics);\n'
+        '                var errors = diagnostics.Where(d => string.Equals(d.Severity, "error", StringComparison.OrdinalIgnoreCase)).ToArray();\n'
+        '                if (errors.Length > 0)\n'
+        '                    throw new InvalidDataException("UniversalMap validation failed: " + string.Join(" | ", errors.Take(8).Select(d => $"{d.Code}: {d.Message}")));\n'
+        '                result = UniversalMapProjectPrimeBackend.ToImportedModel(universal);\n'
+        '                universalSummary = $"UniversalMap · {adapter.DisplayName} · fidelity tier {adapter.FidelityTier} · {diagnostics.Count} validator diagnostics";\n'
+        '            }\n'
+        '            else\n'
+        '            {\n'
+        '                result = await Task.Run(() => ModelImportService.Import(path, settings, importTimeout.Token), importTimeout.Token);\n'
+        '            }\n'
         '        }\n'
         '        catch(OperationCanceledException) when(!token.IsCancellationRequested)\n'
         '        {\n'
@@ -159,7 +196,7 @@ def main() -> int:
         '        _status.Text = "Import stage 2/4 · Resolving dependencies and source fingerprint…";\n'
         '        var hash = await Task.Run(() => MapSourceFingerprint.Hash(result.Dependencies), token);\n'
         '        _status.Text = "Import stage 3/4 · Building preview geometry and collision…";\n',
-        "import timeout and progress stages",
+        "Universal import timeout and progress stages",
     )
 
     replace_once(
