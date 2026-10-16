@@ -510,7 +510,7 @@ public static class FreezeTagLaunchPolicy
     {
         if (expected == GameMode.FreezeTag && actual != GameMode.FreezeTag)
             throw new InvalidOperationException(
-                $"FREEZE TAG MODE LOSS DETECTED at {stage}: expected {expected} ({(int)expected}), got {actual} ({(int)actual)");
+                $"FREEZE TAG MODE LOSS DETECTED at {stage}: expected {expected} ({(int)expected}), got {actual} ({(int)actual})");
     }
 }
 ''')
