@@ -19,7 +19,7 @@ export default async function HuntersDirectory({
 }: { searchParams: Promise<Search> }) {
   const search = await searchParams;
   const q = (search.q || "").normalize("NFC").trim().slice(0, 40);
-  const page = Math.max(1, Math.min(100, Number(search.page) || 1));
+  const page = Math.max(1, Math.min(500, Number(search.page) || 1));
   let results;
   let unavailable = false;
   try {
@@ -87,7 +87,7 @@ export default async function HuntersDirectory({
           {page > 1 ? <Link className="button button-ghost"
             href={href(q, page - 1)}>Previous</Link> : <span />}
           <span>Page {page} of {Math.max(1, Math.ceil(results.total / 25))}</span>
-          {page < 100 && page * 25 < results.total ? <Link className="button button-ghost"
+          {page < 500 && page * 25 < results.total ? <Link className="button button-ghost"
             href={href(q, page + 1)}>Next</Link> : <span />}
         </nav>
       </>}
