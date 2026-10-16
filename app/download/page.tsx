@@ -62,6 +62,44 @@ export default async function DownloadPage() {
         fallbackUrl="https://github.com/AntiNotAnti/Project-Prime/releases/latest"
       />
 
+      <section className="panel install-guide-panel">
+        <div className="install-guide-heading">
+          <div>
+            <span className="mini-tag">WINDOWS SETUP GUIDE</span>
+            <h2>Install Project Prime in a few steps.</h2>
+            <p>
+              Download the Windows build, extract it, launch ProjectPrime.exe,
+              then select your own Metroid Prime Hunters .nds cartridge dump on first run.
+            </p>
+          </div>
+          <a
+            className="button button-ghost"
+            href="/api/assets/windows-install-guide"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Guide
+          </a>
+        </div>
+        <a
+          className="install-guide-link"
+          href="/api/assets/windows-install-guide"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Open the Project Prime Windows installation guide"
+        >
+          <img
+            className="install-guide-image"
+            src="/api/assets/windows-install-guide"
+            alt="Project Prime Windows installation guide showing how to download, extract, launch ProjectPrime.exe, choose your own .nds cartridge dump, wait for setup, and reach Local System Ready."
+          />
+        </a>
+        <p className="helper install-guide-note">
+          Project Prime does not include Nintendo game data. You must provide your own
+          Metroid Prime Hunters cartridge dump.
+        </p>
+      </section>
+
       <section className="panel" style={{ marginTop: "1rem" }}>
         <span className="mini-tag">OFFICIAL RELEASE CHANNEL</span>
         <h2>Always current.</h2>
