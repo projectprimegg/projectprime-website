@@ -67,6 +67,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           python build-staging/studio-experience/apply_studio_experience.py build-staging/studio-experience prime
           python build-staging/studio-experience/apply_studio_experience_polish.py prime
+          python build-staging/studio-experience/apply_studio_layout_fix.py prime
 
       - name: Verify source delta
         shell: bash
@@ -85,6 +86,7 @@ jobs:
           grep -q "inspect_studio_guidance" src/MphRead/Mods/MapEditor/AiMapEngineer.cs
           grep -q "studioexperiencecheck" src/MphRead/Mods/ModEntry.cs
           grep -q "Import stage 1/4" src/MphRead/Mods/Launcher/Gui/MapStudioModelImport.cs
+          grep -q "HorizontalScrollBarVisibility" src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
           git status --short
 
       - name: Restore Project Prime and editor checks
@@ -175,12 +177,13 @@ jobs:
           - per-step ? information buttons
           - automatic tooltips on common buttons
           - uncluttered Beginner toolbar and focused viewport/guide layout
+          - responsive, non-overlapping command bar with horizontal overflow handling
           - self-contained automated acceptance tests in the client
           - headless -studioexperiencecheck command
           - generic and UniversalMap import regression coverage
           - generated OBJ/MTL + companion collision regression fixture
           - automatic duplicate-safe editable project creation before model import
-          - visible model source/project paths
+          - visible model source/project paths in Advanced Mode
           - four-stage import status messages
           - two-minute import timeout with a clear failure instead of a silent apparent hang
           - headless visual captures for Beginner, compact Beginner, Advanced and four-view Advanced layouts
