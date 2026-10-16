@@ -1,0 +1,18 @@
+--- a/src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
++++ b/src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
+@@ -171,11 +171,12 @@
+                 ("Problems",()=>{_showProblems=!_problems.IsVisible;UpdateProblemsVisibility();}),
+                 ("Measure",()=>{if(_viewport!=null){_viewport.MeasureMode=!_viewport.MeasureMode;_viewport.InvalidateVisual();}}),
+                 ("Entity helpers",()=>{if(_viewport!=null){_viewport.EntityVisualization=!_viewport.EntityVisualization;_viewport.InvalidateVisual();}}),
+                 ("Capture preview",CapturePreview));
+-            MenuGroup("Build",("Validate",()=>_=Validate()),("Fix selected problem",FixSelectedProblem),("Build runtime",()=>_=Build(false)),
++            MenuGroup("Build",("AI Map Engineer",ShowAiMapEngineer),("Validate",()=>_=Validate()),("Fix selected problem",FixSelectedProblem),("Build runtime",()=>_=Build(false)),
+                 ("Export .ppmap",()=>_=Build(true)),("Playtest",PlaytestInspector),("Run map audit",()=>_=Audit()));
+             MenuGroup("Online",("Community maps…",ShowCommunity),("Host current map…",()=>_=PrepareOnline()));
+             AddButton(toolbar, "LIBRARY", ShowLibrary);
+             if (CommunityCutoverPolicy.NetRadiantDefault)
+                 AddButton(toolbar, "EDIT IN NETRADIANT", EditCurrentInNetRadiant);
+-            AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);
++            AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);
++            AddButton(toolbar, "AI ENGINEER", ShowAiMapEngineer);
+             AddButton(toolbar, "ASSETS", () => ShowInspectorPage("Assets & music"));
