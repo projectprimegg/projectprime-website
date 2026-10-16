@@ -1,0 +1,1 @@
+import { ComingSoon } from "@/components/ComingSoon"; export const metadata={title:"Hunters"}; export default function Page(){return <ComingSoon eyebrow="PLAYER IDENTITY" title="Hunters" description="Search Hunter profiles, inspect Hunter Licenses, career statistics and detailed match history."/>}
