@@ -45,7 +45,22 @@ jobs:
           git apply --whitespace=nowarn ../phase2.patch
           cp ../build-staging/ai-engineer/AiMapEngineerSession.cs src/MphRead/Mods/MapEditor/AiMapEngineerSession.cs
           cp ../build-staging/ai-engineer/MapStudioAiEngineer.cs src/MphRead/Mods/Launcher/Gui/MapStudioAiEngineer.cs
-          git apply --whitespace=nowarn ../build-staging/ai-engineer/ai-engineer-ui.patch
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs")
+          s = p.read_text(encoding="utf-8")
+          old_build = 'MenuGroup("Build",("Validate",()=>_=Validate()),("Fix selected problem",FixSelectedProblem),("Build runtime",()=>_=Build(false)),'
+          new_build = 'MenuGroup("Build",("AI Map Engineer",ShowAiMapEngineer),("Validate",()=>_=Validate()),("Fix selected problem",FixSelectedProblem),("Build runtime",()=>_=Build(false)),'
+          old_toolbar = 'AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);'
+          new_toolbar = 'AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);\\n            AddButton(toolbar, "AI ENGINEER", ShowAiMapEngineer);'
+          if old_build not in s:
+              raise SystemExit("post-Universal Build menu anchor not found")
+          if old_toolbar not in s:
+              raise SystemExit("post-Universal toolbar anchor not found")
+          s = s.replace(old_build, new_build, 1)
+          s = s.replace(old_toolbar, new_toolbar, 1)
+          p.write_text(s, encoding="utf-8")
+          PY
           git diff --check
           grep -R "AI Map Engineer" -n src/MphRead/Mods/MapEditor src/MphRead/Mods/Launcher/Gui
 
