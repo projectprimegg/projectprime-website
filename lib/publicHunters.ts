@@ -122,7 +122,7 @@ function apiUrl(path: string) {
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   "sb_publishable_EVT45OPl638kA_j8vZ0ebg_sw3aWaVz";
 
-async function getResponse(url: string) {
+async function getResponse(url: URL) {
   return fetch(url, {
     headers: { apikey: publishableKey, Accept: "application/json" },
     redirect: "error",
