@@ -3,6 +3,7 @@ import Link from "next/link";
 const nav = [
   ["Game", "/game"],
   ["Download", "/download"],
+  ["Media", "/media"],
   ["Maps", "/maps"],
   ["Hunters", "/hunters"],
   ["Leaderboards", "/leaderboards"],
