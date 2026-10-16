@@ -1,11 +1,44 @@
 import Link from "next/link";
 import {
   formatBytes,
+  getClientAsset,
   getLatestProjectPrimeRelease,
-  getWindowsClientAsset,
 } from "@/lib/projectPrimeRelease";
 
 export const metadata = { title: "Download" };
+
+const platforms = [
+  {
+    key: "windows",
+    label: "Windows",
+    detail: "Windows x64",
+    button: "Download for Windows",
+  },
+  {
+    key: "linux",
+    label: "Linux",
+    detail: "Linux x64",
+    button: "Download for Linux",
+  },
+  {
+    key: "macos-arm64",
+    label: "macOS",
+    detail: "Apple Silicon",
+    button: "Download for Apple Silicon",
+  },
+  {
+    key: "macos-x64",
+    label: "macOS",
+    detail: "Intel Mac",
+    button: "Download for Intel Mac",
+  },
+  {
+    key: "android",
+    label: "Android",
+    detail: "APK",
+    button: "Download for Android",
+  },
+] as const;
 
 export default async function DownloadPage() {
   let release;
@@ -15,7 +48,6 @@ export default async function DownloadPage() {
     release = null;
   }
 
-  const windowsAsset = release ? getWindowsClientAsset(release) : undefined;
   const releaseDate = release
     ? new Intl.DateTimeFormat("en-US", {
         year: "numeric",
@@ -28,49 +60,69 @@ export default async function DownloadPage() {
     <main className="page-shell">
       <section className="page-hero">
         <span className="eyebrow">GET PROJECT PRIME</span>
-        <h1>Download the client.</h1>
+        <h1>Choose your platform.</h1>
         <p>
-          The download below always tracks the latest public Project Prime release.
-          When a new release is published on the official GitHub repository, this
-          page updates automatically.
+          Download Project Prime for the operating system you want. The page always
+          tracks the latest public release, regardless of which device you are using
+          to browse the site.
         </p>
       </section>
 
-      <section className="download-card panel">
-        <div>
-          <span className="mini-tag">WINDOWS x64</span>
-          <h2>{release?.name ?? "Project Prime Client"}</h2>
-          {release ? (
-            <>
-              <p>
-                Latest stable release: <strong>{release.tag_name}</strong>
-                {releaseDate ? <> · Published {releaseDate}</> : null}
-                {windowsAsset ? <> · {formatBytes(windowsAsset.size)}</> : null}
-              </p>
-              {windowsAsset?.digest ? (
-                <p className="helper">Checksum: {windowsAsset.digest}</p>
-              ) : null}
-            </>
-          ) : (
-            <p>
-              Live release information is temporarily unavailable. The download
-              button will fall back to the official latest-release page.
-            </p>
-          )}
-        </div>
+      {release ? (
+        <section className="panel" style={{ marginBottom: "1rem" }}>
+          <span className="mini-tag">LATEST RELEASE</span>
+          <h2>{release.name}</h2>
+          <p>
+            <strong>{release.tag_name}</strong>
+            {releaseDate ? <> · Published {releaseDate}</> : null}
+          </p>
+        </section>
+      ) : null}
 
-        <a className="button" href="/api/download/latest/windows">
-          Download Latest for Windows
-        </a>
+      <section className="feature-grid">
+        {platforms.map((platform) => {
+          const asset = release
+            ? getClientAsset(release, platform.key)
+            : undefined;
+
+          return (
+            <article className="feature-card" key={platform.key}>
+              <span className="mini-tag">{platform.label}</span>
+              <h3>{platform.detail}</h3>
+              <p>
+                {asset
+                  ? `${asset.name} · ${formatBytes(asset.size)}`
+                  : "Latest package information is temporarily unavailable."}
+              </p>
+              {asset ? (
+                <a
+                  className="button"
+                  href={asset.browser_download_url}
+                >
+                  {platform.button}
+                </a>
+              ) : (
+                <a
+                  className="button"
+                  href="https://github.com/AntiNotAnti/Project-Prime/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View Latest Release
+                </a>
+              )}
+            </article>
+          );
+        })}
       </section>
 
       <section className="panel" style={{ marginTop: "1rem" }}>
         <span className="mini-tag">OFFICIAL RELEASE CHANNEL</span>
         <h2>Always current.</h2>
         <p>
-          Project Prime reads the latest non-draft, non-prerelease GitHub release
-          from AntiNotAnti/Project-Prime and selects the desktop Windows x64 build,
-          excluding dedicated-server packages.
+          This page reads the latest non-draft, non-prerelease GitHub release from
+          AntiNotAnti/Project-Prime and lists the normal client builds for Windows,
+          Linux, macOS, and Android while excluding dedicated-server packages.
         </p>
         <a
           className="text-link"
