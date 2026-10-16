@@ -23,10 +23,19 @@ No new password database, player table, or client-side career submission.
 
 ## Sign-in choices
 
-The existing /maps account component now supports passwordless email
-links, linked email/password, and Google/GitHub/Discord OAuth sign-in.
-Only providers enabled in the Supabase Auth project will work. Configure
-production Auth redirects to include /license and /maps/account.
+The account UI defaults to a single passwordless email action, with a clear
+password alternative for previously secured licenses plus Google/GitHub/Discord.
+Only enabled Supabase Auth providers work. Email signup creates a new identity
+when the address is new, and never merges a separate in-game guest automatically.
+Secure the existing guest from the game first to retain its career.
+
+Website email and OAuth redirects use canonical `projectprime.gg` URLs rather
+than inheriting the development browser origin. The Supabase Auth **Site URL**
+must be `https://projectprime.gg`, with exact `/license` and
+`/maps/account` callbacks allowed. Ensure mail templates honor the
+confirmation URL. Local auth tests require an explicit
+`NEXT_PUBLIC_HUNTER_AUTH_ORIGIN` override. Expired/rejected links show a safe
+retry message without displaying raw error fragments.
 
 A new user/account cannot automatically claim an unrelated anonymous
 game Hunter License. Link the original game identity to the chosen

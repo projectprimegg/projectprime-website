@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowser } from "@/lib/supabaseBrowser";
+import { hunterAuthRedirectUrl } from "@/lib/hunterAuthRedirect";
 
 export function useMapAuth() {
   const client = useMemo(getSupabaseBrowser, []);
@@ -40,6 +41,7 @@ export function MapAccountPanel({
   const { client, session, loading } = useMapAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordMode, setPasswordMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -48,7 +50,8 @@ export function MapAccountPanel({
     event.preventDefault();
     setError(""); setMessage(""); setBusy(true);
     try {
-      if (password) {
+      if (passwordMode) {
+        if (!password) throw new Error("Enter your Hunter License password.");
         const { error: failure } = await client.auth.signInWithPassword({
           email: email.trim(), password,
         });
@@ -57,10 +60,10 @@ export function MapAccountPanel({
       } else {
         const { error: failure } = await client.auth.signInWithOtp({
           email: email.trim(),
-          options: { emailRedirectTo: window.location.origin + redirectTo },
+          options: { emailRedirectTo: hunterAuthRedirectUrl(redirectTo) },
         });
         if (failure) throw failure;
-        setMessage("Check your inbox for the secure Hunter License sign-in link.");
+        setMessage("Check your inbox for the sign-in link. It will open on projectprime.gg, even if you requested it from a development build.");
       }
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to send sign-in email.");
@@ -72,7 +75,7 @@ export function MapAccountPanel({
     try {
       const { error: failure } = await client.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: window.location.origin + redirectTo },
+        options: { redirectTo: hunterAuthRedirectUrl(redirectTo) },
       });
       if (failure) throw failure;
     } catch (failure) {
@@ -122,23 +125,32 @@ export function MapAccountPanel({
       ) : (
         <>
           <span className="mini-tag">HUNTER LICENSE // SUPABASE IDENTITY</span>
-          <h2>{isLicense ? "Sign in to your License." : "Sign in to publish."}</h2>
-          <p>Use the same account or identity provider linked to Project Prime in-game.
-            A new email or provider identity does not automatically merge an existing guest License.</p>
+          <h2>{isLicense ? "Access your Hunter License." : "Sign in to publish."}</h2>
+          <p>Use the identity linked to Project Prime in-game. If you are playing on a guest
+            License, secure it in the game first to keep your Hunter ID and career.</p>
           <form onSubmit={sendEmail}>
             <label htmlFor="map-email">Email address</label>
             <div className="maps-auth-row">
-              <input id="map-email" type="email" value={email} maxLength={320}
+              <input id="map-email" type="email" value={email} maxLength={254}
                 required autoComplete="email" placeholder="you@example.com"
                 onChange={event => setEmail(event.target.value)} />
               <button className="button" disabled={busy} type="submit">
-                {password ? "Sign In" : "Email Sign-In Link"}
+                {busy ? "Please wait…" : passwordMode ? "Sign In" : "Send Email Link"}
               </button>
             </div>
-            <label htmlFor="map-password">Password (optional if previously configured in-game)</label>
-            <input id="map-password" type="password" autoComplete="current-password"
-              value={password} onChange={event => setPassword(event.target.value)} />
+            {passwordMode && <>
+              <label htmlFor="map-password">Hunter License password</label>
+              <input id="map-password" type="password" autoComplete="current-password"
+                required value={password} onChange={event => setPassword(event.target.value)} />
+            </>}
           </form>
+          <p className="helper">{passwordMode
+            ? "Use the password previously set in-game for this Hunter License."
+            : "No password needed. An email link signs you in, or creates a new account if the address is not yet registered."}</p>
+          <button type="button" className="text-link maps-auth-mode" disabled={busy}
+            onClick={() => { setPasswordMode(!passwordMode); setPassword(""); setError(""); setMessage(""); }}>
+            {passwordMode ? "Use an email link instead" : "Already have a password? Sign in with it"}
+          </button>
           <p className="helper">Or use an identity provider already linked to your License:</p>
           <div className="hero-actions">
             <button className="button button-ghost" type="button"
