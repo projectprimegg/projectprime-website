@@ -34,8 +34,10 @@ localStorage by the uploader. Supabase manages its own browser auth session.
 - The UI deliberately does not bypass stale-parent revision conflicts.
 - ZIP manifests are untrusted preflight input. Only the Community service
   can approve and publish the actual `.ppmap` archive.
-- The website does not convert `.pk3` files. Quake conversion needs a separate
-  isolated worker and compatibility acceptance phase.
+- Direct Quake `.pk3` conversion is available on a separate
+  `/maps/upload/pk3` page **only after** its isolated conversion service
+  is deployed and the website's `NEXT_PUBLIC_PK3_CONVERSION_URL` is set.
+  The existing strict `.ppmap` publishing contract remains unchanged.
 - Verify the map service has deployed approved CORS preflight support and a
   body limit compatible with browser chunks.
 - Validate the production Supabase sign-in redirect allowlist and public
