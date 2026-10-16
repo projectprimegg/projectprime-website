@@ -134,8 +134,9 @@ public static class MapPackedSceneCodec
 
             bool collisionOnly = flags.HasFlag(MapPackedMeshFlags.CollisionOnly);
             bool solid = flags.HasFlag(MapPackedMeshFlags.Solid) || collisionOnly;
-            Terrain terrain = Enum.IsDefined(typeof(Terrain), terrainValue)
-                ? (Terrain)terrainValue : Terrain.Metal;
+            Terrain terrain = terrainValue is >= byte.MinValue and <= byte.MaxValue
+                && Enum.IsDefined(typeof(Terrain), (byte)terrainValue)
+                    ? (Terrain)(byte)terrainValue : Terrain.Metal;
             int accepted = 0;
             for (int faceIndex = 0; faceIndex < faceCount; faceIndex++)
             {
