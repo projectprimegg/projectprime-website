@@ -6,15 +6,22 @@ export default function CommunityPage() {
       <section className="page-hero">
         <span className="eyebrow">COMMUNITY</span>
         <h1>Join Project Prime.</h1>
-        <p>Discord will be the central place for players, development updates, map discussion, testing and tournament announcements.</p>
+        <p>Discord is the central place for players, development updates, map discussion, testing and tournament announcements.</p>
       </section>
       <section className="download-card panel">
         <div>
           <span className="mini-tag">DISCORD</span>
           <h2>Project Prime Community</h2>
-          <p>The official invite will be connected here once you provide the permanent Discord invite URL.</p>
+          <p>Join the official Project Prime Discord to find players, follow development, discuss maps and game modes, and keep up with community events.</p>
         </div>
-        <button className="button disabled" disabled>Discord Link Coming Soon</button>
+        <a
+          className="button"
+          href="https://discord.gg/sudbyZMZh3"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Join Discord
+        </a>
       </section>
     </main>
   );
