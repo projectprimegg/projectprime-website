@@ -180,3 +180,9 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 900px) {
   .video-grid, .video-grid-home { grid-template-columns:1fr; }
 }
+
+.trailer-section { padding-top:72px; }
+.featured-trailer { overflow:hidden; }
+.featured-video-frame { aspect-ratio:16/9; }
+.featured-trailer-copy { padding:24px 28px 30px; }
+.featured-trailer-copy p { color:var(--muted); line-height:1.7; margin-bottom:0; }
