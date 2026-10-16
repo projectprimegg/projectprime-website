@@ -79,6 +79,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           python build-staging/zenith-phase6/apply_zenith_phase6.py build-staging/zenith-phase6 prime
           python build-staging/zenith-phase6/apply_zenith_compile_fixes.py prime
+          python build-staging/zenith-phase6/apply_map_authoring_command.py build-staging/zenith-phase6 prime
 
       - name: Verify Phase 6 source delta
         shell: bash
@@ -88,11 +89,13 @@ jobs:
           git diff --check
           test -f src/MphRead/Mods/MapGen/MapPackedScene.cs
           test -f src/MphRead/Mods/MapGen/MapAltFormCertification.cs
+          test -f src/MphRead/Mods/MapGen/MapAuthoringCommand.cs
           grep -q "PPMESH01" src/MphRead/Mods/MapGen/MapPackedScene.cs
           grep -q "RequireAllHunterForms" src/MphRead/Mods/MapGen/MapPackedScene.cs
           grep -q "MapAltFormCertification.Certify" src/MphRead/Mods/MapGen/Build/MapCompiler.cs
           grep -q "PackedScene" src/MphRead/Mods/MapGen/MapDefinition.cs
           grep -q "scene/map.ppmesh" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
+          grep -q "MapAuthoringCommand.Run" src/MphRead/Mods/ModEntry.cs
           git status --short
 
       - name: Restore projects
@@ -155,6 +158,10 @@ jobs:
           Adds reusable packed large-scene assets and a mandatory collision gate that certifies
           biped plus every MPH hunter alt-form profile using actual runtime radii and continuous sweeps.
           A packed map cannot compile or package while any certified route or spawn clearance fails.
+
+          Headless automation:
+          ProjectPrime.exe -mapcompile map.json -mapreport report.json
+          ProjectPrime.exe -mappackage map.json -mapoutput map.ppmap -mapreport report.json
           "@ | Set-Content -Encoding UTF8 publish-win/ZENITH_PHASE6_README.txt
 
       - name: Upload Windows client
