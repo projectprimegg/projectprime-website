@@ -170,7 +170,8 @@ export async function submitPk3Conversion(args: {
 
   const hash = await sourceHash(file, signal, progress);
   const request = requester(client, signal);
-  const route = "v1/sources/" + hash;
+  const variant = new URLSearchParams({ roomName, levelName });
+  const route = "v1/sources/" + hash + "?" + variant.toString();
   progress({ phase: "starting", done: 0, total: file.size,
     message: "Reserving private source upload…" });
   const begin = await request("POST", route, JSON.stringify({
@@ -186,7 +187,7 @@ export async function submitPk3Conversion(args: {
     if (signal.aborted) throw new DOMException("Upload paused.", "AbortError");
     const chunk = file.slice(state.offset,
       Math.min(file.size, state.offset + Math.min(state.chunkBytes, UPLOAD_CHUNK_BYTES)));
-    const response = await request("PUT", route + "?offset=" + state.offset, chunk);
+    const response = await request("PUT", route + "&offset=" + state.offset, chunk);
     if (response.status === 409) {
       const current = await request("GET", route);
       await requireResponse(current, "Upload offset recovery");
@@ -214,7 +215,8 @@ export async function submitPk3Conversion(args: {
   }
   let jobId = state.jobId;
   if (!state.complete) {
-    const completion = await request("POST", route + "/complete");
+    const completion = await request("POST",
+      "v1/sources/" + hash + "/complete?" + variant.toString());
     await requireResponse(completion, "PK3 SHA-256 verification");
     const body = await completion.json() as { jobId?: string };
     jobId = body.jobId || null;
