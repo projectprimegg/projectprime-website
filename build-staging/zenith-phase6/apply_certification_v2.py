@@ -46,7 +46,44 @@ def main() -> int:
                         r.Warning("FP-MAP-014", "Spawn has no nearby supporting floor.", s.Id);
 ''','packed scene spawn source warning')
 
-    print('Fine-route player-form certification V2 integrated into', root)
+    dependencies = mapgen / 'Build/MapDependencyAnalyzer.cs'
+    replace_once(dependencies,
+'''            if (definition.Collision is { } collision) FileDependency("collision", collision.Source, collision.Resolve());
+            foreach (var asset in PackageAssets(definition))
+''',
+'''            if (definition.Collision is { } collision) FileDependency("collision", collision.Source, collision.Resolve());
+            if (definition.PackedScene is { } packedScene)
+                FileDependency("packed-scene", packedScene.Source, packedScene.Resolve());
+            foreach (var asset in PackageAssets(definition))
+''','packed scene dependency fingerprint')
+
+    fingerprint = mapgen / 'Build/MapBuildFingerprint.cs'
+    replace_once(fingerprint,
+'''        public const int CurrentCompilerVersion = 10;
+''',
+'''        public const int CurrentCompilerVersion = 11;
+''','Phase 6 compiler fingerprint')
+
+    screen = root / 'src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs'
+    replace_once(screen,
+'''            if(p.Definition.Import==null&&p.Definition.NativeRoom==null)return;
+''',
+'''            if(p.Definition.Import==null&&p.Definition.NativeRoom==null&&p.Definition.PackedScene==null)return;
+''','packed scene preview eligibility')
+    replace_once(screen,
+'''                string kind=p.Definition.NativeRoom!=null?"Native room":"Imported map";
+''',
+'''                string kind=p.Definition.NativeRoom!=null?"Native room"
+                    :p.Definition.PackedScene!=null?"Packed large scene":"Imported map";
+''','packed scene preview status')
+    replace_once(screen,
+'''            if((p.Definition.Import!=null||p.Definition.NativeRoom!=null)&&result.Faces.Length>0)foreach(var view in _views)view.SetImported(result);
+''',
+'''            if((p.Definition.Import!=null||p.Definition.NativeRoom!=null||p.Definition.PackedScene!=null)
+                &&result.Faces.Length>0)foreach(var view in _views)view.SetImported(result);
+''','packed scene validation preview')
+
+    print('Fine-route player-form certification V2 and packed-scene Studio support integrated into', root)
     return 0
 
 
