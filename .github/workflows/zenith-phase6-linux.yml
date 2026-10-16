@@ -74,10 +74,12 @@ jobs:
         working-directory: prime
         run: |
           set -euxo pipefail
+          report="$GITHUB_WORKSPACE/phase6-linux-acceptance.json"
           dotnet restore src/MphRead/MphRead.csproj -r linux-x64
           dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- \
-            -noupdate -zenithphase6check -zenithphase6output ../phase6-linux-acceptance.json
-          grep -q '"Passed": true' ../phase6-linux-acceptance.json
+            -noupdate -zenithphase6check -zenithphase6output "$report"
+          test -f "$report"
+          grep -q '"Passed": true' "$report"
 
       - name: Publish Linux x64 validation client
         shell: bash
@@ -86,7 +88,7 @@ jobs:
           set -euxo pipefail
           dotnet publish src/MphRead/MphRead.csproj -c Release -r linux-x64 \
             --self-contained true --no-restore -o ../publish-linux
-          cp ../phase6-linux-acceptance.json ../publish-linux/ZENITH_PHASE6_ACCEPTANCE.json
+          cp "$GITHUB_WORKSPACE/phase6-linux-acceptance.json" ../publish-linux/ZENITH_PHASE6_ACCEPTANCE.json
 
       - name: Upload Linux validation client
         uses: actions/upload-artifact@v4
