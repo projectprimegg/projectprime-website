@@ -6,8 +6,9 @@ accepted career projection; browsers cannot submit wins, kills or RP.
 
 ## Public-by-default policy
 
-- `/hunters` discovers Hunter Licenses by nickname unless their owner
-  explicitly opted out. This includes new Licenses with no eligible matches.
+- `/hunters` discovers Auth-owned Hunter Licenses by nickname unless their
+  owner explicitly opted out. This includes new Licenses with no eligible
+  matches; orphan legacy records without sign-in access remain hidden.
 - `/hunters/{opaqueId}` displays a limited public card: nickname, favorite
   Hunter and accepted career totals. Opted-out profile links return 404.
 - `/leaderboards` shows **only accepted career** records with eligible matches.
