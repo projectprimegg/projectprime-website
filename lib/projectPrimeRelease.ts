@@ -33,12 +33,27 @@ export async function getLatestProjectPrimeRelease(): Promise<GitHubRelease> {
   return response.json();
 }
 
-export function getWindowsClientAsset(release: GitHubRelease) {
+export function getClientAsset(
+  release: GitHubRelease,
+  platform: "windows" | "linux" | "macos-arm64" | "macos-x64" | "android",
+) {
+  const matchers = {
+    windows: /-win-x64\.zip$/i,
+    linux: /-linux-x64\.tar\.gz$/i,
+    "macos-arm64": /-osx-arm64\.tar\.gz$/i,
+    "macos-x64": /-osx-x64\.tar\.gz$/i,
+    android: /-android\.apk$/i,
+  } as const;
+
   return release.assets.find(
     (asset) =>
-      /-win-x64\.zip$/i.test(asset.name) &&
-      !/-server-win-x64\.zip$/i.test(asset.name),
+      matchers[platform].test(asset.name) &&
+      !/-server-/i.test(asset.name),
   );
+}
+
+export function getWindowsClientAsset(release: GitHubRelease) {
+  return getClientAsset(release, "windows");
 }
 
 export function formatBytes(bytes: number) {
