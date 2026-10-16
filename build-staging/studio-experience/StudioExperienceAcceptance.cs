@@ -117,18 +117,30 @@ public static class StudioExperienceAcceptance
                 if (imported == null) return (false, "Import did not produce a model.");
                 definition = MapTemplates.Create("STUDIO_ACCEPTANCE", "blank-arena").Definition;
                 definition.BaseDirectory = root;
+
+                string prefix = Path.GetFullPath(root) + Path.DirectorySeparatorChar;
+                foreach (KeyValuePair<string, byte[]> asset in imported.Assets)
+                {
+                    MapPackageReader.CanonicalName(asset.Key);
+                    string destination = Path.GetFullPath(Path.Combine(root, asset.Key));
+                    if (!destination.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Imported acceptance asset escapes its project directory.");
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.WriteAllBytes(destination, asset.Value);
+                }
+
                 ModelReimport.Apply(definition, imported, modelPath,
                     MapSourceFingerprint.Hash(imported.Dependencies), settings);
                 bool applied = definition.ModelSources.Count == 1
                     && definition.Geometry.OfType<MapMesh>().Any();
                 return (applied,
-                    $"{definition.Geometry.Count} geometry object(s), {definition.ModelSources.Count} tracked source(s)");
+                    $"{definition.Geometry.Count} geometry object(s), {definition.ModelSources.Count} tracked source(s), {imported.Assets.Count} staged asset(s)");
             });
 
             Check(checks, "Project source validation runs", () =>
             {
                 if (definition == null) return (false, "Project application did not run.");
-                validation = MapValidator.Validate(definition, checkSources: false);
+                validation = MapValidator.Validate(definition, checkSources: true);
                 int errors = validation.Diagnostics.Count(item => item.Severity == MapDiagnosticSeverity.Error);
                 return (errors == 0,
                     $"{errors} error(s), {validation.Diagnostics.Count} total diagnostic(s)");
@@ -141,7 +153,13 @@ public static class StudioExperienceAcceptance
                 int faces = compilation.Map?.Solid.Count ?? 0;
                 bool passed = compilation.Map != null && faces > 0
                     && compilation.Validation.Diagnostics.All(d => d.Severity != MapDiagnosticSeverity.Error);
-                return (passed, $"runtime map={compilation.Map != null}, collision faces={faces}");
+                string errors = String.Join(" | ", compilation.Validation.Diagnostics
+                    .Where(d => d.Severity == MapDiagnosticSeverity.Error)
+                    .Take(8)
+                    .Select(d => $"{d.Code}: {d.Message}"));
+                string detail = $"runtime map={compilation.Map != null}, collision faces={faces}";
+                if (errors.Length > 0) detail += " · " + errors;
+                return (passed, detail);
             });
 
             Check(checks, "Beginner workflow recommends a real next step", () =>
