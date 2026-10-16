@@ -14,8 +14,10 @@ jobs:
         with:
           node-version: "22"
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Typecheck
         run: npx tsc --noEmit
+      - name: Map API contract tests
+        run: npm run test:maps
       - name: Build site
         run: npm run build

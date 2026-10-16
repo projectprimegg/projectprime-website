@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:maps": "node --experimental-strip-types --test tests/communityMaps.test.mjs"
   },
   "dependencies": {
     "next": "15.5.18",

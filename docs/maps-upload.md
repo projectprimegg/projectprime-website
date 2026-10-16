@@ -22,6 +22,8 @@ maximum is 512 MiB.
 8. The website links to the stable `/maps/{MapId}` detail page. Game clients
    continue to verify the exact package identity independently.
 
+Unlisted maps are hidden from normal discovery but can remain accessible to anyone who has an exact package hash/link; use Draft for private work.
+
 A paused/failed upload can be resumed by choosing the **same file** and
 submitting it again. Server partials expire under existing retention policy.
 File bytes and creator tokens are never stored in website databases or

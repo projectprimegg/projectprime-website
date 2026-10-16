@@ -99,7 +99,7 @@ export function MapUpload() {
       <select id="map-visibility" value={visibility} disabled={active}
         onChange={event => setVisibility(event.target.value as Visibility)}>
         <option value="Published">Published: searchable in-game and on the website</option>
-        <option value="Unlisted">Unlisted: accessible to authorized owners</option>
+        <option value="Unlisted">Unlisted: hidden from discovery, shareable by exact link</option>
         <option value="Draft">Draft: private to your Hunter License</option>
       </select>
 

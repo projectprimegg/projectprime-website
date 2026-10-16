@@ -40,6 +40,9 @@ export type MapProject = {
   updatedAt: string;
   currentRevision: MapRevision | null;
   latestRevision: MapRevision;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
+  canManageLifecycle?: boolean;
 };
 
 export type MapBrowse = { items: MapProject[]; total: number };
