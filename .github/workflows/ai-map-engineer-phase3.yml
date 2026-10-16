@@ -52,7 +52,7 @@ jobs:
           old_build = 'MenuGroup("Build",("Validate",()=>_=Validate()),("Fix selected problem",FixSelectedProblem),("Build runtime",()=>_=Build(false)),'
           new_build = 'MenuGroup("Build",("AI Map Engineer",ShowAiMapEngineer),("Validate",()=>_=Validate()),("Fix selected problem",FixSelectedProblem),("Build runtime",()=>_=Build(false)),'
           old_toolbar = 'AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);'
-          new_toolbar = 'AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);\\n            AddButton(toolbar, "AI ENGINEER", ShowAiMapEngineer);'
+          new_toolbar = 'AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);\n            AddButton(toolbar, "AI ENGINEER", ShowAiMapEngineer);'
           if old_build not in s:
               raise SystemExit("post-Universal Build menu anchor not found")
           if old_toolbar not in s:
