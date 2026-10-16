@@ -2,9 +2,10 @@ using System;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
-using Avalonia;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Media;
 using MphRead.Mods.MapEditor;
 
 namespace MphRead.Mods.Launcher.Gui;
@@ -12,6 +13,9 @@ namespace MphRead.Mods.Launcher.Gui;
 internal sealed partial class MapStudioScreen
 {
     private readonly AiMapEngineerSession _aiMapEngineer = new();
+    private CancellationTokenSource? _aiMapEngineerWork;
+    private TextBox? _aiMapEngineerRequest;
+    private TextBox? _aiMapEngineerOutput;
 
     private void ShowAiMapEngineer()
     {
@@ -21,136 +25,128 @@ internal sealed partial class MapStudioScreen
             return;
         }
 
-        var root = new StackPanel
+        var view = new Grid
         {
-            Spacing = 8,
-            MinWidth = 760,
-            MaxWidth = 920
+            RowDefinitions = new("Auto,Auto,*,Auto"),
+            RowSpacing = 8,
+            MinWidth = 780,
+            Width = 900,
+            Height = 620
         };
+        view.Children.Add(PrimeChrome.Stack(
+            PrimeChrome.Eyebrow("UNIVERSAL MAP STUDIO // CONTROLLED TOOLING"),
+            PrimeChrome.Title("AI MAP ENGINEER"),
+            PrimeChrome.Text(
+                "Inspect, validate, compile, audit and make reversible map edits. Mutating tools create automatic checkpoints and use normal Map Studio undo history.",
+                PrimeTypography.BodySmall, PrimeTheme.TextSecondaryBrush)));
 
-        root.Children.Add(Text("AI MAP ENGINEER"));
-
-        root.Children.Add(new TextBlock
+        _aiMapEngineerRequest = new TextBox
         {
-            Text = "Controlled map-engineering tools use the same document history, validator, compiler and runtime audit as Map Studio. Mutating actions remain undoable; deletion requires explicit confirmation.",
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap
-        });
-
-        var tools = new ComboBox
-        {
-            MinWidth = 300,
-            ItemsSource = AiMapEngineerSession.Tools.Select(t => t.Name).ToArray(),
-            SelectedIndex = 0
-        };
-        root.Children.Add(tools);
-
-        var description = new TextBlock
-        {
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap
-        };
-        root.Children.Add(description);
-
-        void Describe()
-        {
-            string name = tools.SelectedItem as string ?? "";
-            AiMapEngineerTool? tool = AiMapEngineerSession.Tools.FirstOrDefault(t => t.Name == name);
-            description.Text = tool == null ? "" :
-                (tool.Mutates ? "MUTATING · " : "READ ONLY · ") + tool.Description;
-        }
-        tools.SelectionChanged += (_, _) => Describe();
-        Describe();
-
-        root.Children.Add(new TextBlock { Text = "ARGUMENTS (JSON)" });
-        var arguments = new TextBox
-        {
-            Text = "{}",
             AcceptsReturn = true,
-            MinHeight = 88,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+            MinHeight = 92,
+            TextWrapping = TextWrapping.Wrap,
+            Text = "{\n  \"tool\": \"inspect_map\",\n  \"arguments\": {}\n}"
         };
-        root.Children.Add(arguments);
+        Grid.SetRow(_aiMapEngineerRequest, 1);
+        view.Children.Add(_aiMapEngineerRequest);
 
-        root.Children.Add(new TextBlock { Text = "RESULT" });
-        var output = new TextBox
+        _aiMapEngineerOutput = new TextBox
         {
+            AcceptsReturn = true,
             IsReadOnly = true,
-            AcceptsReturn = true,
-            MinHeight = 300,
-            MaxHeight = 390,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-            Text = "Choose a tool and run it."
+            TextWrapping = TextWrapping.Wrap,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            Text = "Run a tool to see structured results.\n\nAvailable tools:\n" +
+                string.Join("\n", AiMapEngineerSession.Tools.Select(tool =>
+                    $"• {tool.Name}{(tool.Mutating ? " [changes map]" : "")} — {tool.Description}"))
         };
-        root.Children.Add(output);
+        Grid.SetRow(_aiMapEngineerOutput, 2);
+        view.Children.Add(_aiMapEngineerOutput);
 
-        async void Run(string? overrideTool = null, JsonObject? overrideArguments = null)
+        var buttons = new WrapPanel { Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetRow(buttons, 3);
+        view.Children.Add(buttons);
+        AddButton(buttons, "INSPECT MAP", () => RunAiQuick("inspect_map"));
+        AddButton(buttons, "INSPECT SELECTION", () => RunAiQuick("inspect_selection"));
+        AddButton(buttons, "VALIDATE", () => RunAiQuick("validate_map"));
+        AddButton(buttons, "COMPILE", () => RunAiQuick("compile_map"));
+        AddButton(buttons, "AUDIT", () => RunAiQuick("run_map_audit"));
+        AddButton(buttons, "CHECKPOINT", () => RunAiQuick("create_checkpoint", new JsonObject
         {
-            if (_document == null) return;
-            string tool = overrideTool ?? (tools.SelectedItem as string ?? "");
-            JsonObject? parsed = overrideArguments;
-            if (parsed == null)
-            {
-                try
-                {
-                    string raw = string.IsNullOrWhiteSpace(arguments.Text) ? "{}" : arguments.Text!;
-                    parsed = JsonNode.Parse(raw) as JsonObject
-                        ?? throw new InvalidOperationException("Arguments must be a JSON object.");
-                }
-                catch (Exception ex)
-                {
-                    output.Text = "ARGUMENT ERROR\n" + ex.Message;
-                    return;
-                }
-            }
+            ["name"] = "manual-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss")
+        }));
+        AddButton(buttons, "UNDO", () => RunAiQuick("undo"));
+        AddButton(buttons, "REDO", () => RunAiQuick("redo"));
+        AddButton(buttons, "RUN JSON", () => _ = RunAiRequest());
+        AddButton(buttons, "CANCEL TOOL", () => _aiMapEngineerWork?.Cancel());
+        AddButton(buttons, "CLOSE", Dismiss);
+        Modal(view, fitContent: true);
+    }
 
-            try
+    private void RunAiQuick(string tool, JsonObject? arguments = null)
+    {
+        if (_aiMapEngineerRequest != null)
+        {
+            _aiMapEngineerRequest.Text = new JsonObject
             {
-                output.Text = "Running " + tool + "…";
-                using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-                AiMapEngineerResult result = await _aiMapEngineer.ExecuteAsync(
-                    _document, new AiMapEngineerRequest(tool, parsed), timeout.Token);
-                output.Text = result.ToJson();
-                _status.Text = "AI Map Engineer · " + result.Summary;
+                ["tool"] = tool,
+                ["arguments"] = arguments ?? new JsonObject()
+            }.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        _ = RunAiRequest();
+    }
+
+    private async Task RunAiRequest()
+    {
+        if (_document == null)
+        {
+            if (_aiMapEngineerOutput != null) _aiMapEngineerOutput.Text = "Open or create a map project first.";
+            return;
+        }
+        if (_aiMapEngineerWork != null)
+        {
+            if (_aiMapEngineerOutput != null) _aiMapEngineerOutput.Text = "An AI Map Engineer tool is already running.";
+            return;
+        }
+
+        try
+        {
+            JsonObject root = JsonNode.Parse(_aiMapEngineerRequest?.Text ?? string.Empty) as JsonObject
+                ?? throw new InvalidOperationException("The request must be one JSON object.");
+            string tool = root["tool"]?.GetValue<string>()?.Trim() ?? string.Empty;
+            if (tool.Length == 0) throw new InvalidOperationException("The request needs a tool name.");
+            JsonObject? arguments = root["arguments"] as JsonObject;
+
+            _aiMapEngineerWork = new CancellationTokenSource();
+            if (_aiMapEngineerOutput != null) _aiMapEngineerOutput.Text = $"Running {tool}…";
+            _status.Text = "AI Map Engineer: " + tool;
+            AiMapEngineerResult result = await _aiMapEngineer.ExecuteAsync(
+                _document, new(tool, arguments), _aiMapEngineerWork.Token);
+            if (_aiMapEngineerOutput != null) _aiMapEngineerOutput.Text = result.ToJson();
+            _status.Text = result.Summary;
+            if (result.Changed)
+            {
                 RefreshHierarchy(force: true);
                 ShowInspectorPage(_inspectorPage, false);
                 _viewport?.InvalidateVisual();
-            }
-            catch (OperationCanceledException)
-            {
-                output.Text = "AI Map Engineer operation cancelled or timed out.";
-            }
-            catch (Exception ex)
-            {
-                output.Text = "AI Map Engineer failure\n" + ex;
+                RefreshStudioChrome();
             }
         }
-
-        var quick = new WrapPanel
+        catch (OperationCanceledException)
         {
-            Orientation = Orientation.Horizontal
-        };
-        AddButton(quick, "INSPECT", () => Run("inspect_map", new JsonObject()));
-        AddButton(quick, "VALIDATE", () => Run("validate_map", new JsonObject()));
-        AddButton(quick, "COMPILE", () => Run("compile_map", new JsonObject()));
-        AddButton(quick, "AUDIT", () => Run("run_map_audit", new JsonObject()));
-        AddButton(quick, "CHECKPOINT", () => Run("create_checkpoint", new JsonObject()));
-        AddButton(quick, "UNDO", () => Run("undo", new JsonObject()));
-        AddButton(quick, "REDO", () => Run("redo", new JsonObject()));
-        root.Children.Add(quick);
-
-        var actions = new WrapPanel
+            if (_aiMapEngineerOutput != null) _aiMapEngineerOutput.Text = "AI Map Engineer tool cancelled.";
+            _status.Text = "AI Map Engineer tool cancelled.";
+        }
+        catch (Exception ex)
         {
-            Orientation = Orientation.Horizontal
-        };
-        AddButton(actions, "RUN TOOL", () => Run());
-        AddButton(actions, "CLOSE", Dismiss);
-        root.Children.Add(actions);
-
-        Modal(new ScrollViewer
+            if (_aiMapEngineerOutput != null) _aiMapEngineerOutput.Text = ex.ToString();
+            Failure(ex);
+        }
+        finally
         {
-            Content = root,
-            MaxHeight = 700,
-            VerticalScrollBarVisibility =
-                Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
-        }, fitContent: true);
+            _aiMapEngineerWork?.Dispose();
+            _aiMapEngineerWork = null;
+        }
     }
 }
