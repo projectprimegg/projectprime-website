@@ -1,0 +1,198 @@
+name: Universal Map Studio Experience Phase 4 Windows client
+
+on:
+  push:
+    branches:
+      - ums-studio-experience-phase4
+    paths:
+      - ".github/workflows/studio-experience-phase4.yml"
+      - "build-staging/ai-engineer/**"
+      - "build-staging/studio-experience/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 65
+    steps:
+      - name: Checkout Studio Experience staging
+        uses: actions/checkout@v4
+
+      - name: Checkout validated Universal Map Studio Phase 2 patch
+        uses: actions/checkout@v4
+        with:
+          repository: projectprimegg/projectprime-website
+          ref: ci/universal-map-studio-v20
+          path: phase2-staging
+
+      - name: Checkout Project Prime 0.1.53 integration base
+        uses: actions/checkout@v4
+        with:
+          repository: AntiNotAnti/Project-Prime
+          ref: 91b1c0c6c44e8c90effd250729709f791a84765e
+          path: prime
+
+      - name: Setup .NET 10.0.401
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Decode validated Universal Map Studio patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $encoded = "phase2-staging/build-staging/universal-phase2-valid.patch.xz.b64"
+          [IO.File]::WriteAllBytes("universal-phase2-valid.patch.xz", [Convert]::FromBase64String((Get-Content $encoded -Raw).Trim()))
+          7z x -y "universal-phase2-valid.patch.xz" -o"." | Out-Null
+
+      - name: Apply Universal Map Studio Phase 2
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git apply --whitespace=nowarn ../universal-phase2-valid.patch
+
+      - name: Integrate AI Map Engineer Phase 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/ai-engineer/apply_ai_engineer.py build-staging/ai-engineer prime
+
+      - name: Integrate Beginner and Advanced Studio Experience Phase 4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/studio-experience/apply_studio_experience.py build-staging/studio-experience prime
+
+      - name: Verify source delta
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git diff --check
+          test -f src/MphRead/Mods/MapEditor/StudioExperience.cs
+          test -f src/MphRead/Mods/MapEditor/StudioExperienceAcceptance.cs
+          test -f src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
+          grep -q "BEGINNER" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
+          grep -q "ADVANCED" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
+          grep -q "studioexperiencecheck" src/MphRead/Mods/ModEntry.cs
+          grep -q "Import stage 1/4" src/MphRead/Mods/Launcher/Gui/MapStudioModelImport.cs
+          git status --short
+
+      - name: Restore Project Prime and editor checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet restore src/MphRead/MphRead.csproj -r win-x64
+          dotnet restore tools/map-editor-check/map-editor-check.csproj
+
+      - name: Run Map Studio core checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-restore
+
+      - name: Run self-contained Studio acceptance suite from source
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          $report = (Resolve-Path ..).Path + "\studio-experience-source-report.json"
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- -noupdate -studioexperiencecheck -studioexperienceoutput $report | Tee-Object ../studio-experience-source-console.json
+          if ($LASTEXITCODE -ne 0) { throw "Source Studio acceptance suite failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $report)) { throw "Source Studio acceptance report was not written." }
+          if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Source Studio acceptance report did not pass." }
+
+      - name: Publish Windows x64 client
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish
+
+      - name: Verify published AI and Studio tool contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "./publish/ProjectPrime.exe" -aimapengineerhelp | Tee-Object -FilePath "publish/AI_MAP_ENGINEER_TOOLS.json"
+          if ($LASTEXITCODE -ne 0) { throw "AI Map Engineer help command failed with exit code $LASTEXITCODE" }
+          $report = (Resolve-Path publish).Path + "\STUDIO_EXPERIENCE_ACCEPTANCE.json"
+          & "./publish/ProjectPrime.exe" -studioexperiencecheck -studioexperienceoutput $report | Tee-Object -FilePath "publish/STUDIO_EXPERIENCE_ACCEPTANCE_CONSOLE.json"
+          if ($LASTEXITCODE -ne 0) { throw "Published Studio acceptance suite failed with exit code $LASTEXITCODE" }
+          if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Published Studio acceptance report did not pass." }
+
+      - name: Write build provenance and test guide
+        shell: pwsh
+        run: |
+          @"
+          Project Prime Universal Map Studio Experience — Phase 4
+
+          Integrated foundation:
+          - Project Prime 0.1.53 integration base
+          - validated Universal Map Studio Phase 2
+          - controlled AI Map Engineer Phase 3
+
+          Added in this build:
+          - Beginner Mode with goal-based guided workflows
+          - Advanced Mode retaining the complete existing Map Studio workspace
+          - persistent mode, workflow and reviewed-step state per project
+          - recommended next-step engine shared by UI, CI and AI tooling
+          - plain-language help catalog
+          - per-step ? information buttons
+          - automatic tooltips on common buttons
+          - searchable Map Studio help
+          - self-contained automated acceptance tests in the client
+          - headless -studioexperiencecheck command
+          - generated OBJ/MTL + companion collision regression fixture
+          - automatic editable project creation before model import
+          - visible model source/project paths
+          - four-stage import status messages
+          - two-minute import timeout with a clear failure instead of a silent apparent hang
+
+          Beginner Mode workflows:
+          1. Import an external 3D model
+          2. Build a map from scratch
+          3. Edit an existing map
+          4. Prepare a map for online play
+
+          Automated verification performed by this artifact:
+          - full existing Map Studio core check suite
+          - model source readability
+          - companion collision detection
+          - bounded model import
+          - nonempty render and collision geometry
+          - finite vertices and valid indices
+          - project application and source tracking
+          - source validation
+          - runtime compilation and collision output
+          - beginner next-step recommendations
+          - beginner/advanced preference persistence
+          - help coverage
+          - published executable AI tool contract
+          - published executable Studio acceptance suite
+
+          Run:
+          Start_ProjectPrime.cmd
+
+          In Map Studio, use BEGINNER for the guided workflow or ADVANCED for every existing tool.
+          AUTO TEST runs the built-in acceptance suite and produces a copyable JSON report.
+          "@ | Set-Content -Encoding UTF8 publish/STUDIO_EXPERIENCE_PHASE4_README.txt
+          @"
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          ProjectPrime.exe -launcher -noupdate -userdata "%cd%\UserData"
+          "@ | Set-Content -Encoding ASCII publish/Start_ProjectPrime.cmd
+
+      - name: Upload Windows test client
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime-Universal-Map-Studio-Experience-Phase4
+          path: publish/**
+          if-no-files-found: error
+          retention-days: 30
