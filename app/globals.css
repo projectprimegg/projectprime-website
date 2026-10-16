@@ -295,6 +295,8 @@ a { color: inherit; text-decoration: none; }
 .maps-auth label, .maps-upload label { display:block; margin:20px 0 8px; font-size:.85rem; color:var(--cyan-2); }
 .maps-auth-row { display:flex; gap:12px; }
 .maps-auth-row input { min-width:0; flex:1; }
+.maps-auth-mode { background:none; border:0; padding:0; font:inherit; cursor:pointer; text-align:left; }
+.maps-auth-mode:disabled { opacity:.6; cursor:wait; }
 .maps-auth-alternate { border-top:1px solid var(--line); padding-top:14px; margin-top:26px; }
 .maps-success { border-left:3px solid #7dffbe; padding-left:12px; color:#b5ffe0!important; }
 .maps-error { border-left:3px solid #ff7f8c; padding-left:12px; color:#ffd0d0!important; }

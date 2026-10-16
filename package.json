@@ -10,6 +10,7 @@
     "test:maps": "node --experimental-strip-types --test tests/communityMaps.test.mjs",
     "test:license": "node --experimental-strip-types --test tests/hunterLicense.test.mjs",
     "test:leaderboards": "node --experimental-strip-types --test tests/publicHunters.test.mjs",
+    "test:auth": "node --experimental-strip-types --test tests/hunterAuthRedirect.test.mjs",
     "test:pk3": "node --experimental-strip-types --test tests/pk3Publishing.test.mjs"
   },
   "dependencies": {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HunterLicenseDashboard } from "@/components/license/HunterLicenseDashboard";
+import { AuthReturnNotice } from "@/components/license/AuthReturnNotice";
 
 export const metadata = {
   title: "Hunter License",
@@ -20,6 +21,7 @@ export default function HunterLicensePage() {
           <Link className="button button-ghost" href="/leaderboards">Leaderboards</Link>
         </div>
       </section>
+      <AuthReturnNotice />
       <HunterLicenseDashboard />
     </main>
   );
