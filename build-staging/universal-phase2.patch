@@ -1,0 +1,610 @@
+--- a/src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
++++ b/src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
+@@ -156,7 +156,7 @@
+                 menus.Items.Add(group);
+             }
+             MenuGroup("File",("Source changes…",ShowSourceChanges),("Library",ShowLibrary),("New",NewMap),("Clone built-in",CloneBuiltIn),
+-                ("Open…",()=>Browse("Open project",false,Open,".json",".ppmap")),("Import Q3…",Import),("Import 3D Model…",ImportModel),("Model Sources / Reimport…",ManageModelSources),
++                ("Open…",()=>Browse("Open project",false,Open,".json",".ppmap")),("Import Q3…",Import),("Import Universal 3D…",ImportModel),("Universal Importers…",ShowUniversalImporters),("Model Sources / Reimport…",ManageModelSources),
+                 ("Export project folder…",()=>Browse("Export project folder (choose map.json destination)",true,path=>{try{if(_document!=null){string exported=MapProjectFolder.Export(_document.Project.Definition,Path.Combine(Path.GetDirectoryName(path)!,Path.GetFileNameWithoutExtension(path)));_status.Text="Exported "+exported;}}catch(Exception ex){Failure(ex);}},".json")),("Save",Save),("Save as…",()=>Browse("Save project",true,SaveTo,".json")),("Back to launcher",Close));
+             MenuGroup("Edit",("Undo",()=>_document?.History.Undo()),("Redo",()=>_document?.History.Redo()),
+                 ("Copy",()=>_document?.CopySelection()),("Paste",()=>_document?.PasteClipboard()),
+@@ -171,7 +171,7 @@
+                 ("Export .ppmap",()=>_=Build(true)),("Playtest",PlaytestInspector),("Run map audit",()=>_=Audit()));
+             MenuGroup("Online",("Community maps…",ShowCommunity),("Host current map…",()=>_=PrepareOnline()));
+             AddButton(toolbar, "LIBRARY", ShowLibrary);
+-            AddButton(toolbar, "IMPORT MODEL", ImportModel);
++            AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);
+             AddButton(toolbar, "ASSETS", () => ShowInspectorPage("Assets & music"));
+             AddButton(toolbar, "POP OUT", () => _ = PopOut());
+             AddButton(toolbar, "CANCEL JOB", () => _work?.Cancel());
+--- a/src/MphRead/Mods/Launcher/Gui/MapStudioModelImport.cs
++++ b/src/MphRead/Mods/Launcher/Gui/MapStudioModelImport.cs
+@@ -5,6 +5,7 @@
+ using Avalonia.Controls;
+ using MphRead.Mods.MapEditor;
+ using MphRead.Mods.MapGen;
++using MphRead.Mods.MapGen.Universal;
+ 
+ namespace MphRead.Mods.Launcher.Gui;
+ 
+@@ -23,6 +24,9 @@
+         var reverse = new CheckBox { Content = "Reverse face winding", IsChecked = settings.FlipWinding }; panel.Children.Add(reverse);
+         var zUp = new CheckBox { Content = "Z-up source (Blender / 3ds Max)", IsChecked = settings.ZUp }; panel.Children.Add(zUp);
+         var flipUv = new CheckBox { Content = "Flip UV vertically", IsChecked = settings.FlipUvVertical }; panel.Children.Add(flipUv);
++        var universal = new CheckBox { Content = "Universal pipeline (experimental)", IsChecked = true };
++        panel.Children.Add(universal);
++        panel.Children.Add(Text("Routes this import through UniversalMap validation and the shared Project Prime backend before preview/apply."));
+         var collision = new ComboBox { ItemsSource = Enum.GetValues<ModelCollisionMode>(),
+             SelectedItem = settings.VisualCollision ? ModelCollisionMode.Visual : settings.Collision };
+         panel.Children.Add(Text("Collision: None, Visual, Simplified, BoundingBoxes, or Companion")); panel.Children.Add(collision);
+@@ -34,7 +38,7 @@
+             try
+             {
+                 var options = new ModelImportSettings(Number(scale.Text ?? "1"), reverse.IsChecked == true, false, zUp.IsChecked == true, flipUv.IsChecked == true, (ModelCollisionMode)(collision.SelectedItem ?? ModelCollisionMode.None));
+-                Dismiss(); AnalyzeModel(path, options, source?.Id);
++                Dismiss(); AnalyzeModel(path, options, source?.Id, universal.IsChecked == true);
+             }
+             catch (Exception ex) { Failure(ex); }
+         });
+@@ -78,13 +82,32 @@
+         VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+     };
+ 
+-    private void AnalyzeModel(string path, ModelImportSettings settings, Guid? sourceId) => _ = Job("Analyzing model", async token =>
++    private void AnalyzeModel(string path, ModelImportSettings settings, Guid? sourceId, bool universalPipeline = false) => _ = Job("Analyzing model", async token =>
+     {
+         if (_document == null) throw new IOException("Create or open a map first.");
+         var document = _document;
+         var state = document.CurrentStateId;
+         if (document.Project.Definition.BundlePath != null) throw new IOException("Save this package as an editable project before importing a model.");
+-        var result = await Task.Run(() => ModelImportService.Import(path, settings, token), token);
++        ImportedModel result;
++        string? universalSummary = null;
++        if (universalPipeline)
++        {
++            var adapter = UniversalMapImportService.Resolve(path);
++            var universal = await Task.Run(() => UniversalMapImportService.Import(path, new UniversalImportOptions(
++                Scale: settings.Scale, FlipWinding: settings.FlipWinding, ZUp: settings.ZUp,
++                FlipUvVertical: settings.FlipUvVertical, Collision: settings.Collision), token), token);
++            var diagnostics = UniversalMapValidator.Validate(universal.Map);
++            universal.Map.Diagnostics.AddRange(diagnostics);
++            var errors = diagnostics.Where(d => string.Equals(d.Severity, "error", StringComparison.OrdinalIgnoreCase)).ToArray();
++            if (errors.Length > 0)
++                throw new InvalidDataException("UniversalMap validation failed: " + string.Join(" | ", errors.Take(8).Select(d => $"{d.Code}: {d.Message}")));
++            result = UniversalMapProjectPrimeBackend.ToImportedModel(universal);
++            universalSummary = $"UniversalMap · {adapter.DisplayName} · fidelity tier {adapter.FidelityTier} · {diagnostics.Count} validator diagnostics";
++        }
++        else
++        {
++            result = await Task.Run(() => ModelImportService.Import(path, settings, token), token);
++        }
+         var hash = await Task.Run(() => MapSourceFingerprint.Hash(result.Dependencies), token);
+         GuardJob(token);
+         var previous = document.Project.Definition.ModelSources.FirstOrDefault(s => s.Id == sourceId);
+@@ -134,6 +157,7 @@
+         preview.DetachedFromVisualTree += (_, _) => CleanupPreview();
+         var panel = new StackPanel { Spacing = 8 };
+         panel.Children.Add(Text(sourceId == null ? "IMPORT PREVIEW" : "REIMPORT PREVIEW"));
++        if (universalSummary != null) panel.Children.Add(Text(universalSummary));
+         var oldMeshes = document.Project.Definition.Geometry.OfType<MapMesh>()
+             .Where(m => previous?.Objects.Any(o => o.Id == m.Id) == true).ToArray();
+         panel.Children.Add(Text($"Objects {oldMeshes.Length} → {result.Meshes.Count} · Vertices {oldMeshes.Sum(m => m.Vertices.Count)} → {result.Meshes.Sum(m => m.Vertices.Count)} · Faces {oldMeshes.Sum(m => m.Faces.Count)} → {result.Meshes.Sum(m => m.Faces.Count)}"));
+--- /dev/null
++++ b/src/MphRead/Mods/Launcher/Gui/MapStudioUniversal.cs
+@@ -0,0 +1,27 @@
++using System;
++using System.IO;
++using System.Linq;
++using Avalonia.Controls;
++using MphRead.Mods.MapGen.Universal;
++
++namespace MphRead.Mods.Launcher.Gui;
++
++internal sealed partial class MapStudioScreen
++{
++    private void ShowUniversalImporters()
++    {
++        var panel = new StackPanel { Spacing = 8 };
++        panel.Children.Add(Text("UNIVERSAL MAP IMPORT PIPELINE"));
++        panel.Children.Add(Text("Source adapters feed one UniversalMap representation before Project Prime conversion, validation and editor application."));
++        foreach (var adapter in UniversalMapImportService.Adapters.OrderBy(a => a.FidelityTier).ThenBy(a => a.DisplayName, StringComparer.OrdinalIgnoreCase))
++        {
++            panel.Children.Add(Text($"{adapter.DisplayName} · fidelity tier {adapter.FidelityTier}"));
++            panel.Children.Add(Text("Formats: " + string.Join(", ", adapter.Extensions.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))));
++        }
++        panel.Children.Add(Text("Tier 1 = native map structure; Tier 2 = tool-assisted structured conversion; Tier 3 = generic 3D geometry/material import."));
++        panel.Children.Add(Text("Current testable path: OBJ / glTF / GLB through the Project Prime generic 3D adapter. More source-game adapters should terminate at the same UniversalMap backend."));
++        AddButton(panel, "Import universal 3D…", ImportModel);
++        AddButton(panel, "Close", Dismiss);
++        Modal(panel);
++    }
++}
+--- /dev/null
++++ b/src/MphRead/Mods/MapGen/Universal/UniversalMap.cs
+@@ -0,0 +1,148 @@
++using System;
++using System.Collections.Generic;
++
++namespace MphRead.Mods.MapGen.Universal;
++
++/// <summary>
++/// Engine-neutral intermediate representation for imported authored worlds.
++/// Source adapters populate this model; normalization/validation and the
++/// Project Prime backend operate on it without knowing the source game.
++/// </summary>
++public sealed class UniversalMap
++{
++    public int SchemaVersion { get; set; } = 1;
++    public Guid Id { get; set; } = Guid.NewGuid();
++    public string Name { get; set; } = "Imported World";
++    public UniversalSourceInfo Source { get; set; } = new();
++    public UniversalEnvironment Environment { get; set; } = new();
++    public List<UniversalMaterial> Materials { get; set; } = new();
++    public List<UniversalMesh> RenderMeshes { get; set; } = new();
++    public List<UniversalMesh> CollisionMeshes { get; set; } = new();
++    public List<UniversalEntity> Entities { get; set; } = new();
++    public List<UniversalDiagnostic> Diagnostics { get; set; } = new();
++    public Dictionary<string, string> Metadata { get; set; } = new(StringComparer.Ordinal);
++}
++
++public sealed class UniversalSourceInfo
++{
++    public string AdapterId { get; set; } = "unknown";
++    public string AdapterVersion { get; set; } = "1";
++    public string SourcePath { get; set; } = "";
++    public string SourceFormat { get; set; } = "";
++    public string CoordinateSystem { get; set; } = "source";
++    public float UnitsToMph { get; set; } = 1f;
++    public List<string> Dependencies { get; set; } = new();
++}
++
++public sealed class UniversalEnvironment
++{
++    public bool FogEnabled { get; set; }
++    public float[] FogColor { get; set; } = new[] { 0f, 0f, 0f };
++    public string? Sky { get; set; }
++    public float FarClip { get; set; } = 350f;
++    public Dictionary<string, string> Metadata { get; set; } = new(StringComparer.Ordinal);
++}
++
++public sealed class UniversalMesh
++{
++    public Guid Id { get; set; } = Guid.NewGuid();
++    public string Name { get; set; } = "Mesh";
++    public UniversalTransform Transform { get; set; } = new();
++    public List<float[]> Vertices { get; set; } = new();
++    public List<int[]> Faces { get; set; } = new();
++    public List<int> FaceMaterials { get; set; } = new();
++    public List<float[][]?> FaceUv0 { get; set; } = new();
++    public List<float[][]?> FaceUv1 { get; set; } = new();
++    public bool Solid { get; set; } = true;
++    public bool CollisionOnly { get; set; }
++    public UniversalCollisionFlags Collision { get; set; } = new();
++    public UniversalProvenance Provenance { get; set; } = new();
++    public Dictionary<string, string> Metadata { get; set; } = new(StringComparer.Ordinal);
++}
++
++public sealed class UniversalTransform
++{
++    public float[] Position { get; set; } = new float[3];
++    public float[] Rotation { get; set; } = new[] { 0f, 0f, 0f, 1f };
++    public float[] Scale { get; set; } = new[] { 1f, 1f, 1f };
++}
++
++public sealed class UniversalCollisionFlags
++{
++    public bool BlocksPlayers { get; set; } = true;
++    public bool BlocksProjectiles { get; set; } = true;
++    public bool BlocksScan { get; set; } = true;
++    public bool Damaging { get; set; }
++    public int Slipperiness { get; set; }
++    public string Terrain { get; set; } = "Metal";
++}
++
++public sealed class UniversalMaterial
++{
++    public Guid Id { get; set; } = Guid.NewGuid();
++    public string Name { get; set; } = "Material";
++    public string? NativeTexture { get; set; }
++    public string? Albedo { get; set; }
++    public string? Normal { get; set; }
++    public string? Detail { get; set; }
++    public string? Lightmap { get; set; }
++    public string? SpecularRoughness { get; set; }
++    public string? Emissive { get; set; }
++    public string? OpacityMask { get; set; }
++    public bool TwoSided { get; set; }
++    public float Opacity { get; set; } = 1f;
++    public float Gloss { get; set; }
++    public float Roughness { get; set; } = 1f;
++    public float Metallic { get; set; }
++    public float SpecularStrength { get; set; }
++    public float ReflectionStrength { get; set; }
++    public float EmissiveStrength { get; set; } = 1f;
++    public UniversalUvTransform Uv0 { get; set; } = new();
++    public UniversalMaterialAnimation? Animation { get; set; }
++    public UniversalProvenance Provenance { get; set; } = new();
++    public Dictionary<string, string> Metadata { get; set; } = new(StringComparer.Ordinal);
++}
++
++public sealed class UniversalUvTransform
++{
++    public float[] Scale { get; set; } = new[] { 1f, 1f };
++    public float[] Offset { get; set; } = new float[2];
++    public float RotationDegrees { get; set; }
++}
++
++public sealed class UniversalMaterialAnimation
++{
++    public float[] Scroll { get; set; } = new float[2];
++    public float RotationDegreesPerSecond { get; set; }
++    public float[] Scale { get; set; } = new[] { 1f, 1f };
++    public float[] ScalePulse { get; set; } = new float[2];
++    public float EmissiveIntensity { get; set; } = 1f;
++    public float EmissivePulse { get; set; }
++    public float LoopSeconds { get; set; } = 100f;
++}
++
++public sealed class UniversalEntity
++{
++    public Guid Id { get; set; } = Guid.NewGuid();
++    public string Type { get; set; } = "unknown";
++    public string Name { get; set; } = "Entity";
++    public UniversalTransform Transform { get; set; } = new();
++    public UniversalProvenance Provenance { get; set; } = new();
++    public Dictionary<string, string> Properties { get; set; } = new(StringComparer.Ordinal);
++}
++
++public sealed class UniversalProvenance
++{
++    public string SourceObject { get; set; } = "";
++    public string SourceType { get; set; } = "";
++    public string SourceMaterial { get; set; } = "";
++    public List<string> Warnings { get; set; } = new();
++}
++
++public sealed class UniversalDiagnostic
++{
++    public string Code { get; set; } = "UMAP-INFO";
++    public string Severity { get; set; } = "info";
++    public string Message { get; set; } = "";
++    public string? SourceObject { get; set; }
++}
+--- /dev/null
++++ b/src/MphRead/Mods/MapGen/Universal/UniversalMapAdapter.cs
+@@ -0,0 +1,58 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Threading;
++
++namespace MphRead.Mods.MapGen.Universal;
++
++public sealed record UniversalImportOptions(
++    float Scale = 1f,
++    bool FlipWinding = false,
++    bool ZUp = false,
++    bool FlipUvVertical = true,
++    ModelCollisionMode Collision = ModelCollisionMode.Companion);
++
++public sealed record UniversalImportResult(UniversalMap Map, IReadOnlyDictionary<string, byte[]> Assets, IReadOnlyDictionary<string, string> AssetSources, IReadOnlyList<string> Dependencies);
++
++public interface IUniversalMapAdapter
++{
++    string Id { get; }
++    string DisplayName { get; }
++    int FidelityTier { get; }
++    IReadOnlyCollection<string> Extensions { get; }
++    bool CanImport(string path);
++    UniversalImportResult Import(string path, UniversalImportOptions options, CancellationToken cancellation = default);
++}
++
++/// <summary>
++/// Shared adapter registry. Game-specific decoders remain thin and terminate
++/// at UniversalMap instead of writing Project Prime runtime data directly.
++/// </summary>
++public static class UniversalMapImportService
++{
++    private static readonly List<IUniversalMapAdapter> _adapters = new()
++    {
++        new ExistingModelUniversalAdapter()
++    };
++
++    public static IReadOnlyList<IUniversalMapAdapter> Adapters => _adapters;
++
++    public static void Register(IUniversalMapAdapter adapter)
++    {
++        ArgumentNullException.ThrowIfNull(adapter);
++        if (_adapters.Any(existing => string.Equals(existing.Id, adapter.Id, StringComparison.OrdinalIgnoreCase)))
++            throw new InvalidOperationException($"A UniversalMap adapter named '{adapter.Id}' is already registered.");
++        _adapters.Add(adapter);
++    }
++
++    public static IUniversalMapAdapter Resolve(string path)
++    {
++        path = Path.GetFullPath(path);
++        return _adapters.FirstOrDefault(adapter => adapter.CanImport(path))
++            ?? throw new InvalidDataException($"No UniversalMap adapter supports '{Path.GetExtension(path)}'.");
++    }
++
++    public static UniversalImportResult Import(string path, UniversalImportOptions options, CancellationToken cancellation = default)
++        => Resolve(path).Import(path, options, cancellation);
++}
+--- /dev/null
++++ b/src/MphRead/Mods/MapGen/Universal/ExistingModelUniversalAdapter.cs
+@@ -0,0 +1,110 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Threading;
++
++namespace MphRead.Mods.MapGen.Universal;
++
++/// <summary>
++/// Tier-3 adapter over Project Prime's already hardened OBJ/glTF importers.
++/// This proves the UniversalMap seam without duplicating parser code.
++/// </summary>
++public sealed class ExistingModelUniversalAdapter : IUniversalMapAdapter
++{
++    private static readonly string[] _extensions = { ".obj", ".gltf", ".glb" };
++    public string Id => "project-prime-model";
++    public string DisplayName => "Project Prime generic 3D";
++    public int FidelityTier => 3;
++    public IReadOnlyCollection<string> Extensions => _extensions;
++    public bool CanImport(string path) => _extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
++
++    public UniversalImportResult Import(string path, UniversalImportOptions options, CancellationToken cancellation = default)
++    {
++        path = Path.GetFullPath(path);
++        var imported = ModelImportService.Import(path, new ModelImportSettings(
++            Scale: options.Scale,
++            FlipWinding: options.FlipWinding,
++            ZUp: options.ZUp,
++            FlipUvVertical: options.FlipUvVertical,
++            Collision: options.Collision), cancellation);
++
++        var map = new UniversalMap
++        {
++            Name = Path.GetFileNameWithoutExtension(path),
++            Source = new UniversalSourceInfo
++            {
++                AdapterId = Id,
++                SourcePath = path,
++                SourceFormat = Path.GetExtension(path).TrimStart('.').ToLowerInvariant(),
++                CoordinateSystem = options.ZUp ? "source Z-up converted to Project Prime" : "source/default",
++                UnitsToMph = options.Scale,
++                Dependencies = imported.Dependencies.ToList()
++            }
++        };
++
++        foreach (var material in imported.Materials)
++        {
++            map.Materials.Add(new UniversalMaterial
++            {
++                Id = material.Id == Guid.Empty ? Guid.NewGuid() : material.Id,
++                Name = material.Name,
++                NativeTexture = material.Texture,
++                Albedo = material.Albedo,
++                Normal = material.Normal,
++                SpecularRoughness = material.SpecularRoughness,
++                Emissive = material.Emissive,
++                TwoSided = material.TwoSided,
++                Opacity = material.Alpha.HasValue ? Math.Clamp(material.Alpha.Value / 31f, 0f, 1f) : 1f,
++                Animation = material.Animation == null ? null : new UniversalMaterialAnimation
++                {
++                    Scroll = (float[])material.Animation.UvScroll.Clone(),
++                    RotationDegreesPerSecond = material.Animation.UvRotationDegreesPerSecond,
++                    Scale = (float[])material.Animation.UvScale.Clone(),
++                    ScalePulse = (float[])material.Animation.UvScalePulse.Clone(),
++                    EmissiveIntensity = material.Animation.EmissiveIntensity,
++                    EmissivePulse = material.Animation.EmissivePulse,
++                    LoopSeconds = material.Animation.LoopFrames / 30f
++                },
++                Provenance = new UniversalProvenance { SourceMaterial = material.Name, SourceType = "model-material" }
++            });
++        }
++
++        foreach (var source in imported.Meshes)
++        {
++            var target = new UniversalMesh
++            {
++                Id = source.Id,
++                Name = source.Label,
++                Solid = source.Solid,
++                CollisionOnly = source.CollisionOnly,
++                Transform = new UniversalTransform
++                {
++                    Position = (float[])source.Transform.Position.Clone(),
++                    Rotation = (float[])source.Transform.Rotation.Clone(),
++                    Scale = (float[])source.Transform.Scale.Clone()
++                },
++                Collision = new UniversalCollisionFlags
++                {
++                    BlocksPlayers = !source.IgnorePlayers,
++                    BlocksProjectiles = !source.IgnoreBeams,
++                    BlocksScan = !source.IgnoreScan,
++                    Damaging = source.Damaging,
++                    Slipperiness = source.Slipperiness,
++                    Terrain = source.Terrain
++                },
++                Provenance = new UniversalProvenance { SourceObject = source.Label, SourceType = "model-mesh" }
++            };
++            target.Vertices.AddRange(source.Vertices.Select(v => (float[])v.Clone()));
++            target.Faces.AddRange(source.Faces.Select(f => (int[])f.Clone()));
++            target.FaceMaterials.AddRange(source.FaceMaterials);
++            target.FaceUv0.AddRange(source.FaceTexcoords.Select(face => face == null ? null : face.Select(uv => (float[])uv.Clone()).ToArray()));
++            if (source.CollisionOnly) map.CollisionMeshes.Add(target); else map.RenderMeshes.Add(target);
++        }
++
++        foreach (string warning in imported.Warnings)
++            map.Diagnostics.Add(new UniversalDiagnostic { Code = "UMAP-ADAPTER-WARN", Severity = "warning", Message = warning });
++
++        return new UniversalImportResult(map, imported.Assets, imported.AssetSources, imported.Dependencies);
++    }
++}
+--- /dev/null
++++ b/src/MphRead/Mods/MapGen/Universal/UniversalMapProjectPrimeBackend.cs
+@@ -0,0 +1,103 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++
++namespace MphRead.Mods.MapGen.Universal;
++
++/// <summary>
++/// Common Project Prime backend for UniversalMap. Adapters must not bypass
++/// this seam; future normalization, repair, validation and provenance hooks
++/// belong here or before it.
++/// </summary>
++public static class UniversalMapProjectPrimeBackend
++{
++    public static ImportedModel ToImportedModel(UniversalImportResult source)
++    {
++        ArgumentNullException.ThrowIfNull(source);
++        var definition = CreateProject(source.Map, source.Map.Name);
++        var meshes = definition.Geometry.OfType<MapMesh>().ToArray();
++        var warnings = source.Map.Diagnostics
++            .Where(d => !string.Equals(d.Severity, "info", StringComparison.OrdinalIgnoreCase))
++            .Select(d => $"[{d.Code}] {d.Message}")
++            .ToArray();
++        return new ImportedModel(meshes, definition.Materials.ToArray(), source.Assets, warnings)
++        {
++            Dependencies = source.Dependencies,
++            AssetSources = source.AssetSources
++        };
++    }
++
++    public static MapDefinition CreateProject(UniversalMap source, string runtimeName, string? author = null)
++    {
++        ArgumentNullException.ThrowIfNull(source);
++        if (string.IsNullOrWhiteSpace(runtimeName)) throw new ArgumentException("Runtime map name is required.", nameof(runtimeName));
++
++        var definition = new MapDefinition
++        {
++            FormatVersion = 3,
++            MapId = source.Id,
++            Name = runtimeName.ToUpperInvariant(),
++            InGameName = source.Name,
++            Author = author,
++            FarClip = source.Environment.FarClip,
++            FogEnabled = source.Environment.FogEnabled,
++            FogColor = source.Environment.FogColor.Select(v => (int)Math.Clamp(MathF.Round(v * 31f), 0, 31)).ToArray()
++        };
++
++        foreach (var material in source.Materials)
++        {
++            definition.Materials.Add(new MapMaterial
++            {
++                Id = material.Id,
++                Name = material.Name,
++                Texture = material.NativeTexture,
++                Albedo = material.Albedo,
++                Normal = material.Normal,
++                SpecularRoughness = material.SpecularRoughness,
++                Emissive = material.Emissive,
++                TwoSided = material.TwoSided,
++                Alpha = material.Opacity >= .999f ? null : (int)Math.Clamp(MathF.Round(material.Opacity * 31f), 0, 31),
++                Animation = material.Animation == null ? null : new MapMaterialAnimation
++                {
++                    UvScroll = (float[])material.Animation.Scroll.Clone(),
++                    UvRotationDegreesPerSecond = material.Animation.RotationDegreesPerSecond,
++                    UvScale = (float[])material.Animation.Scale.Clone(),
++                    UvScalePulse = (float[])material.Animation.ScalePulse.Clone(),
++                    EmissiveIntensity = material.Animation.EmissiveIntensity,
++                    EmissivePulse = material.Animation.EmissivePulse,
++                    LoopFrames = Math.Max(1, (int)MathF.Round(material.Animation.LoopSeconds * 30f))
++                }
++            });
++        }
++
++        foreach (var mesh in source.RenderMeshes.Concat(source.CollisionMeshes))
++        {
++            var target = new MapMesh
++            {
++                Id = mesh.Id,
++                Label = mesh.Name,
++                CollisionOnly = mesh.CollisionOnly || source.CollisionMeshes.Contains(mesh),
++                Solid = mesh.Solid,
++                Damaging = mesh.Collision.Damaging,
++                Slipperiness = mesh.Collision.Slipperiness,
++                IgnorePlayers = !mesh.Collision.BlocksPlayers,
++                IgnoreBeams = !mesh.Collision.BlocksProjectiles,
++                IgnoreScan = !mesh.Collision.BlocksScan,
++                Terrain = mesh.Collision.Terrain,
++                Transform = new MapTransform
++                {
++                    Position = (float[])mesh.Transform.Position.Clone(),
++                    Rotation = (float[])mesh.Transform.Rotation.Clone(),
++                    Scale = (float[])mesh.Transform.Scale.Clone()
++                }
++            };
++            target.Vertices.AddRange(mesh.Vertices.Select(v => (float[])v.Clone()));
++            target.Faces.AddRange(mesh.Faces.Select(f => (int[])f.Clone()));
++            target.FaceMaterials.AddRange(mesh.FaceMaterials);
++            target.FaceTexcoords.AddRange(mesh.FaceUv0.Select(face => face == null ? null : face.Select(uv => (float[])uv.Clone()).ToArray()));
++            definition.Geometry.Add(target);
++        }
++
++        return definition;
++    }
++}
+--- /dev/null
++++ b/src/MphRead/Mods/MapGen/Universal/UniversalMapValidator.cs
+@@ -0,0 +1,54 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Numerics;
++
++namespace MphRead.Mods.MapGen.Universal;
++
++public static class UniversalMapValidator
++{
++    public static IReadOnlyList<UniversalDiagnostic> Validate(UniversalMap map)
++    {
++        ArgumentNullException.ThrowIfNull(map);
++        var diagnostics = new List<UniversalDiagnostic>();
++        var all = map.RenderMeshes.Concat(map.CollisionMeshes).ToArray();
++        var ids = new HashSet<Guid>();
++        foreach (var mesh in all)
++        {
++            if (!ids.Add(mesh.Id)) diagnostics.Add(Error("UMAP-GEO-001", $"Duplicate mesh id {mesh.Id}.", mesh.Name));
++            if (mesh.Vertices.Count == 0 || mesh.Faces.Count == 0) diagnostics.Add(Error("UMAP-GEO-002", "Mesh has no usable faces.", mesh.Name));
++            for (int i = 0; i < mesh.Vertices.Count; i++)
++            {
++                var v = mesh.Vertices[i];
++                if (v.Length != 3 || v.Any(x => !float.IsFinite(x))) diagnostics.Add(Error("UMAP-GEO-003", $"Vertex {i} is not a finite XYZ position.", mesh.Name));
++            }
++            for (int i = 0; i < mesh.Faces.Count; i++)
++            {
++                var f = mesh.Faces[i];
++                if (f.Length < 3 || f.Any(index => index < 0 || index >= mesh.Vertices.Count))
++                {
++                    diagnostics.Add(Error("UMAP-GEO-004", $"Face {i} has invalid indices.", mesh.Name));
++                    continue;
++                }
++                if (f.Length == 3)
++                {
++                    Vector3 a = V(mesh.Vertices[f[0]]), b = V(mesh.Vertices[f[1]]), c = V(mesh.Vertices[f[2]]);
++                    if (Vector3.Cross(b - a, c - a).LengthSquared() < 1e-10f)
++                        diagnostics.Add(Error("UMAP-GEO-005", $"Face {i} is degenerate.", mesh.Name));
++                }
++            }
++            if (mesh.FaceMaterials.Count != 0 && mesh.FaceMaterials.Count != mesh.Faces.Count)
++                diagnostics.Add(Error("UMAP-MAT-001", "Face material count does not match face count.", mesh.Name));
++            foreach (int material in mesh.FaceMaterials)
++                if (material < 0 || material >= map.Materials.Count) diagnostics.Add(Error("UMAP-MAT-002", $"Material index {material} is out of range.", mesh.Name));
++            if (mesh.FaceUv0.Count != 0 && mesh.FaceUv0.Count != mesh.Faces.Count)
++                diagnostics.Add(Error("UMAP-UV-001", "UV0 face count does not match geometry face count.", mesh.Name));
++        }
++        if (map.RenderMeshes.Count > 0 && map.CollisionMeshes.Count == 0 && map.RenderMeshes.All(m => !m.Solid))
++            diagnostics.Add(new UniversalDiagnostic { Code = "UMAP-COL-001", Severity = "warning", Message = "Map contains render meshes but no player-blocking collision." });
++        return diagnostics;
++    }
++
++    private static Vector3 V(float[] v) => new(v[0], v[1], v[2]);
++    private static UniversalDiagnostic Error(string code, string message, string source) => new() { Code = code, Severity = "error", Message = message, SourceObject = source };
++}
