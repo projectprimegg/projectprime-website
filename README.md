@@ -48,3 +48,8 @@ The site auto-deploys when changes are pushed to the production branch connected
 - Add richer release notes/changelog presentation
 - Add legal / attribution content before public launch
 - Prepare backend architecture for Hunter profiles, leaderboards, match history, replays, tournaments, and live viewing
+
+
+## Deployment connection
+
+Vercel Git integration is connected directly to `projectprimegg/projectprime-website`, so pushes to the production branch trigger deployments automatically.
