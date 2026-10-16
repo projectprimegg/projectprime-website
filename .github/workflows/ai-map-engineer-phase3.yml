@@ -44,6 +44,7 @@ jobs:
           cd prime
           git apply --whitespace=nowarn ../phase2.patch
           cp ../build-staging/ai-engineer/AiMapEngineerSession.cs src/MphRead/Mods/MapEditor/AiMapEngineerSession.cs
+          cp ../build-staging/ai-engineer/AiMapEngineerBatchCommand.cs src/MphRead/Mods/MapEditor/AiMapEngineerBatchCommand.cs
           cp ../build-staging/ai-engineer/MapStudioAiEngineer.cs src/MphRead/Mods/Launcher/Gui/MapStudioAiEngineer.cs
           python - <<'PY'
           from pathlib import Path
@@ -60,6 +61,20 @@ jobs:
           s = s.replace(old_build, new_build, 1)
           s = s.replace(old_toolbar, new_toolbar, 1)
           p.write_text(s, encoding="utf-8")
+
+          mod = Path("src/MphRead/Mods/ModEntry.cs")
+          m = mod.read_text(encoding="utf-8")
+          anchor = '            if (HasFlag(args, "mapbuild"))\n'
+          insert = '''            if (HasFlag(args, "mapagent"))
+            {
+                Environment.ExitCode = MapEditor.AiMapEngineerBatchCommand.Run(ValueAfter(args, "mapagent"));
+                return true;
+            }
+'''
+          if anchor not in m:
+              raise SystemExit("mapbuild command anchor not found")
+          m = m.replace(anchor, insert + anchor, 1)
+          mod.write_text(m, encoding="utf-8")
           PY
           git diff --check
           grep -R "AI Map Engineer" -n src/MphRead/Mods/MapEditor src/MphRead/Mods/Launcher/Gui
@@ -73,6 +88,29 @@ jobs:
         shell: pwsh
         working-directory: prime
         run: dotnet build src/MphRead/MphRead.csproj -c Release --no-restore
+
+      - name: Run AI Engineer headless smoke test
+        shell: pwsh
+        working-directory: prime
+        run: |
+          @'
+          {
+            "project": "maps/arena/arena.json",
+            "output": "ai-smoke-output.json",
+            "stopOnFailure": true,
+            "steps": [
+              { "tool": "inspect_map", "arguments": {} },
+              { "tool": "create_checkpoint", "arguments": { "name": "baseline" } },
+              { "tool": "rename_map", "arguments": { "name": "AI SMOKE ARENA" } },
+              { "tool": "validate_map", "arguments": {} },
+              { "tool": "restore_checkpoint", "arguments": { "name": "baseline" } },
+              { "tool": "validate_map", "arguments": {} }
+            ]
+          }
+          '@ | Set-Content -Encoding UTF8 ai-smoke.json
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-build -- -noupdate -mapagent ai-smoke.json | Tee-Object ai-smoke-result.json
+          if (-not (Test-Path ai-smoke-output.json)) { throw "AI Engineer did not save smoke output." }
+          if (-not (Select-String -Path ai-smoke-result.json -Pattern '"success": true' -Quiet)) { throw "AI Engineer smoke batch did not succeed." }
 
       - name: Build map editor checks
         shell: pwsh
@@ -108,6 +146,8 @@ jobs:
           - controlled move/duplicate/delete/rename mutations
           - explicit delete confirmation
           - Map Studio AI Engineer console and quick actions
+          - headless -mapagent JSON batch host for multi-step agent sessions
+          - CI smoke proof of checkpoint -> mutate -> validate -> restore -> validate
           - no arbitrary shell/filesystem tool exposure
 
           This is an engineering test build. Provider/API integration and visual capture tools are subsequent AI Engineer stages.
