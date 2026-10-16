@@ -3,6 +3,8 @@ name: Freeze Tag Playable Test
 on:
   push:
     branches: ["freeze-tag-playable-test"]
+  pull_request:
+    branches: ["main"]
 
 permissions:
   contents: read
