@@ -1,0 +1,93 @@
+name: Project Prime Zenith Phase 6 Linux validation client
+
+on:
+  push:
+    branches:
+      - zenith-map-port-phase6
+    paths:
+      - ".github/workflows/zenith-phase6-linux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Zenith Phase 6 staging
+        uses: actions/checkout@v4
+
+      - name: Checkout validated Universal Map Studio Phase 2 patch
+        uses: actions/checkout@v4
+        with:
+          repository: projectprimegg/projectprime-website
+          ref: ci/universal-map-studio-v20
+          path: phase2-staging
+
+      - name: Checkout Project Prime 0.1.53 integration base
+        uses: actions/checkout@v4
+        with:
+          repository: AntiNotAnti/Project-Prime
+          ref: 91b1c0c6c44e8c90effd250729709f791a84765e
+          path: prime
+
+      - name: Setup .NET 10.0.401
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Decode validated Universal Map Studio patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          base64 -d phase2-staging/build-staging/universal-phase2-valid.patch.xz.b64 > universal-phase2-valid.patch.xz
+          xz -d universal-phase2-valid.patch.xz
+
+      - name: Apply Universal Map Studio Phase 2
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git apply --whitespace=nowarn ../universal-phase2-valid.patch
+
+      - name: Integrate Phases 3 through 6
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 build-staging/ai-engineer/apply_ai_engineer.py build-staging/ai-engineer prime
+          python3 build-staging/studio-experience/apply_studio_experience.py build-staging/studio-experience prime
+          python3 build-staging/studio-experience/apply_studio_experience_polish.py prime
+          python3 build-staging/studio-experience/apply_studio_layout_fix.py prime
+          python3 build-staging/lighting/apply_lighting_compat.py prime
+          python3 build-staging/lighting/apply_studio_lighting_phase5.py build-staging/lighting prime
+          python3 build-staging/lighting/apply_lighting_visuals.py prime
+          python3 build-staging/zenith/apply_zenith_phase6.py build-staging/zenith prime
+
+      - name: Restore and run Phase 6 acceptance
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          dotnet restore src/MphRead/MphRead.csproj -r linux-x64
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- \
+            -noupdate -zenithphase6check -zenithphase6output ../phase6-linux-acceptance.json
+          grep -q '"Passed": true' ../phase6-linux-acceptance.json
+
+      - name: Publish Linux x64 validation client
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r linux-x64 \
+            --self-contained true --no-restore -o ../publish-linux
+          cp ../phase6-linux-acceptance.json ../publish-linux/ZENITH_PHASE6_ACCEPTANCE.json
+
+      - name: Upload Linux validation client
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime-Zenith-Phase6-Linux-x64-Validator
+          path: publish-linux/**
+          if-no-files-found: error
+          retention-days: 7
