@@ -64,7 +64,7 @@ internal sealed partial class MapStudioScreen
         Grid.SetRow(_aiMapEngineerOutput, 2);
         view.Children.Add(_aiMapEngineerOutput);
 
-        var buttons = new WrapPanel { Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        var buttons = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
         Grid.SetRow(buttons, 3);
         view.Children.Add(buttons);
         AddButton(buttons, "INSPECT MAP", () => RunAiQuick("inspect_map"));
