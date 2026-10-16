@@ -100,13 +100,15 @@ export function MapAccountPanel() {
               <button className="button" disabled={busy} type="submit">Email Sign-In Link</button>
             </div>
           </form>
-          <div className="maps-auth-alternate">
-            <p>Want to try publishing without an email? Guest ownership can be
-              lost if you clear your browser data.</p>
-            <button className="button button-ghost" disabled={busy} onClick={guest}>
-              Continue as Guest
-            </button>
-          </div>
+          {process.env.NEXT_PUBLIC_ENABLE_GUEST_PUBLISHING === "1" && (
+            <div className="maps-auth-alternate">
+              <p>Guest publishing is enabled for this deployment. Guest ownership
+                can be lost when you clear your browser data.</p>
+              <button className="button button-ghost" disabled={busy} onClick={guest}>
+                Continue as Guest
+              </button>
+            </div>
+          )}
         </>
       )}
       {message && <p className="maps-success" role="status">{message}</p>}
