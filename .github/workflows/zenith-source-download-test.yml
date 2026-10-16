@@ -1,0 +1,25 @@
+name: Zenith source download test
+
+on:
+  push:
+    branches:
+      - zenith-map-port-phase6
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Zenith source from ChatGPT Library
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://chatgpt.com/api/library/files/libfile_ca4723f5f7988191aeaf13ca1e6f8b46/download'
+          Invoke-WebRequest -Uri $url -OutFile zenith_minimal_source.zip -MaximumRedirection 10
+          $size = (Get-Item zenith_minimal_source.zip).Length
+          Write-Host "Downloaded $size bytes"
+          if ($size -lt 10000000) { throw "Downloaded file is unexpectedly small." }
+          $hash = (Get-FileHash zenith_minimal_source.zip -Algorithm SHA256).Hash
+          Write-Host "SHA256=$hash"
+          7z l zenith_minimal_source.zip | Select-Object -First 80
