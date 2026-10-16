@@ -108,7 +108,8 @@ jobs:
             ]
           }
           '@ | Set-Content -Encoding UTF8 ai-smoke.json
-          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-build -- -noupdate -mapagent ai-smoke.json | Tee-Object ai-smoke-result.json
+          $batch = (Resolve-Path ai-smoke.json).Path
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-build -- -noupdate -mapagent $batch | Tee-Object ai-smoke-result.json
           if (-not (Test-Path ai-smoke-output.json)) { throw "AI Engineer did not save smoke output." }
           if (-not (Select-String -Path ai-smoke-result.json -Pattern '"success": true' -Quiet)) { throw "AI Engineer smoke batch did not succeed." }
 
