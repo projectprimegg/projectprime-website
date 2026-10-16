@@ -1,0 +1,1 @@
+import { ComingSoon } from "@/components/ComingSoon"; export const metadata={title:"Maps"}; export default function Page(){return <ComingSoon eyebrow="CUSTOM CONTENT" title="Maps" description="Browse official and community map packs, compatibility information, screenshots and downloads."/>}
