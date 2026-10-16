@@ -96,7 +96,8 @@ jobs:
           grep -q "PPMESH01" src/MphRead/Mods/MapGen/MapPackedScene.cs
           grep -q "RequireAllHunterForms" src/MphRead/Mods/MapGen/MapPackedScene.cs
           grep -q "AnalyzeFineForCertification" src/MphRead/Mods/MapGen/MapNodePacker.cs
-          grep -q "spawn-reachable fine route segments" src/MphRead/Mods/MapGen/MapAltFormCertification.cs
+          grep -q "requireAllProfiles" src/MphRead/Mods/MapGen/MapAltFormCertification.cs
+          grep -q "applicable spawn-reachable fine route" src/MphRead/Mods/MapGen/MapAltFormCertification.cs
           grep -q "MapAltFormCertification.Certify" src/MphRead/Mods/MapGen/Build/MapCompiler.cs
           grep -q "PackedScene" src/MphRead/Mods/MapGen/MapDefinition.cs
           grep -q "scene/map.ppmesh" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
