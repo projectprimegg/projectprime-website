@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using MphRead.Mods;
 using MphRead.Mods.MapGen;
@@ -28,7 +29,7 @@ public partial class Scene
             definition = CustomRooms.Definitions.FirstOrDefault(map =>
                 map.Name.Equals(roomName, StringComparison.OrdinalIgnoreCase));
         }
-        catch (Exception ex) when (ex is System.IO.IOException or InvalidDataException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
             Mods.DebugLog.Line("lighting", "Could not load authored lighting for " + roomName + ": " + ex.Message);
         }
