@@ -491,4 +491,271 @@ c = c.replace('''        if(match){Phase=FreezeTagPhase.Finished; PhaseTicks=0; 
 (root/'src/MphRead/Mods/FreezeTag/FreezeTagRules.cs').write_text(c,encoding='utf-8')
 print('patched FreezeTag round/match clock ownership')
 
+
+# v1.2 lobby fix: a stock remote hosted server does not know GameMode 27 and
+# silently falls back to Battle. Freeze Tag must use the matching server binary
+# shipped beside this client until the public hosted fleet supports the mode.
+write('src/MphRead/Mods/FreezeTag/FreezeTagLaunchPolicy.cs', r'''using System;
+
+namespace MphRead.Mods.FreezeTag;
+
+public static class FreezeTagLaunchPolicy
+{
+    public static bool RequiresMatchingLocalServer(GameMode mode) => mode == GameMode.FreezeTag;
+
+    public static void Trace(string stage, GameMode mode)
+        => Console.WriteLine($"[FREEZETAG TRACE] {stage} = {mode} ({(int)mode})");
+
+    public static void RequirePreserved(string stage, GameMode expected, GameMode actual)
+    {
+        if (expected == GameMode.FreezeTag && actual != GameMode.FreezeTag)
+            throw new InvalidOperationException(
+                $"FREEZE TAG MODE LOSS DETECTED at {stage}: expected {expected} ({(int)expected}), got {actual} ({(int)actual)");
+    }
+}
+''')
+
+edit('src/MphRead/Mods/Launcher/Gui/CreateServerScreen.cs',
+'''            GameMode mode = SelectedMode();
+            var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter.Value);''',
+'''            GameMode mode = SelectedMode();
+            Mods.FreezeTag.FreezeTagLaunchPolicy.Trace("CreateServer SelectedMode", mode);
+            var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter.Value);''')
+
+edit('src/MphRead/Mods/Launcher/Gui/CreateServerScreen.cs',
+'''            if (Dedicated)
+            {
+                await StartHere(name, player, hunter, maps, timeLimit, pointGoal);
+                return;
+            }
+            await StartOnServer(name, player, hunter, mode, maps, timeLimit, pointGoal);''',
+'''            // The public hosted fleet is still stock Project Prime and does
+            // not know custom GameMode 27. Its HostPool therefore interprets
+            // the unknown value as Battle. Never send Freeze Tag to that path:
+            // the matching ProjectPrimeServer.exe is packaged beside this client.
+            if (Mods.FreezeTag.FreezeTagLaunchPolicy.RequiresMatchingLocalServer(mode))
+            {
+                if (!LocalServer.Ready)
+                {
+                    Fail("Freeze Tag requires the matching ProjectPrimeServer.exe beside this client.");
+                    return;
+                }
+                Mods.FreezeTag.FreezeTagLaunchPolicy.Trace("CreateServer LocalServer handoff", mode);
+                await StartHere(name, player, hunter, maps, timeLimit, pointGoal);
+                return;
+            }
+            if (Dedicated)
+            {
+                await StartHere(name, player, hunter, maps, timeLimit, pointGoal);
+                return;
+            }
+            await StartOnServer(name, player, hunter, mode, maps, timeLimit, pointGoal);''')
+
+edit('src/MphRead/Mods/Launcher/Gui/CreateServerScreen.cs',
+'''        private async Task StartOnServer(string name, string player, Hunter hunter,
+            GameMode mode, List<(string RoomKey, GameMode Mode)> maps,
+            int timeLimit, ushort pointGoal)
+        {
+            if (_chosen == null)''',
+'''        private async Task StartOnServer(string name, string player, Hunter hunter,
+            GameMode mode, List<(string RoomKey, GameMode Mode)> maps,
+            int timeLimit, ushort pointGoal)
+        {
+            if (Mods.FreezeTag.FreezeTagLaunchPolicy.RequiresMatchingLocalServer(mode))
+            {
+                throw new InvalidOperationException(
+                    "FREEZE TAG MODE LOSS DETECTED: Freeze Tag cannot use a stock remote hosted server.");
+            }
+            if (_chosen == null)''')
+
+edit('src/MphRead/Mods/Launcher/Gui/CreateServerScreen.cs',
+'''            int port = await Task.Run(() => LocalServer.Start(name, maps,
+                maxPlayers: PlayerEntity.SlotCapacity, timeLimit: timeLimit,''',
+'''            if (maps.Count > 0) Mods.FreezeTag.FreezeTagLaunchPolicy.Trace("Local server requested mode", maps[0].Mode);
+            int port = await Task.Run(() => LocalServer.Start(name, maps,
+                maxPlayers: PlayerEntity.SlotCapacity, timeLimit: timeLimit,''')
+
+edit('src/MphRead/Mods/Launcher/Gui/CreateServerScreen.cs',
+'''            Finish(new LaunchPlan
+            {
+                Kind = LaunchKind.Online,''',
+'''            if (maps.Count > 0)
+            {
+                GameMode serverMode = NetSession.ActiveMatchDefinition?.Mode ?? maps[0].Mode;
+                Mods.FreezeTag.FreezeTagLaunchPolicy.Trace("Client lobby authoritative mode", serverMode);
+                Mods.FreezeTag.FreezeTagLaunchPolicy.RequirePreserved(
+                    "client lobby authoritative state", maps[0].Mode, serverMode);
+            }
+            Finish(new LaunchPlan
+            {
+                Kind = LaunchKind.Online,''',1)
+
+# Remove silent unknown-mode-to-Battle behavior from this build's hosted child.
+edit('src/MphRead/Mods/Network/HostedServerProcess.cs',
+'''            GameMode mode = Enum.IsDefined(typeof(GameMode), request.Mode)
+                ? (GameMode)request.Mode
+                : GameMode.Battle;''',
+'''            if (!Enum.IsDefined(typeof(GameMode), request.Mode))
+            {
+                reason = $"unsupported game mode id {request.Mode}; refusing instead of silently starting Battle";
+                return null;
+            }
+            GameMode mode = (GameMode)request.Mode;
+            if (mode == GameMode.FreezeTag)
+                Mods.FreezeTag.FreezeTagLaunchPolicy.Trace("Hosted child request", mode);''')
+
+edit('src/MphRead/Mods/Network/HostPool.cs',
+'''            GameMode mode = Enum.IsDefined(typeof(GameMode), request.Mode)
+                ? (GameMode)request.Mode
+                : GameMode.Battle;''',
+'''            if (!Enum.IsDefined(typeof(GameMode), request.Mode))
+                return new HostReplyPacket { Reason = $"unsupported game mode id {request.Mode}" };
+            GameMode mode = (GameMode)request.Mode;
+            if (mode == GameMode.FreezeTag)
+                Mods.FreezeTag.FreezeTagLaunchPolicy.Trace("HostPool request", mode);''')
+
+# Trace the actual host request before it goes onto the wire.
+edit('src/MphRead/Mods/Network/NetMaster.cs',
+'''                var request = new HostRequestPacket
+                {
+                    Protocol = NetConfig.ProtocolVersion,''',
+'''                var request = new HostRequestPacket
+                {
+                    Protocol = NetConfig.ProtocolVersion,''')
+edit('src/MphRead/Mods/Network/NetMaster.cs',
+'''                var datagram = new byte[1 + request.Length];
+                datagram[0] = (byte)PacketType.HostRequest;''',
+'''                if (mode == GameMode.FreezeTag)
+                    Mods.FreezeTag.FreezeTagLaunchPolicy.Trace("HostRequest.Mode", (GameMode)request.Mode);
+                var datagram = new byte[1 + request.Length];
+                datagram[0] = (byte)PacketType.HostRequest;''')
+
+# Dedicated/local server gets the exact mode from its rotation file.
+edit('src/MphRead/Mods/Network/LocalServer.cs',
+'''            LastError = null;
+            HostedLibrary = null;''',
+'''            LastError = null;
+            HostedLibrary = null;
+            if (rotation.Count > 0 && rotation[0].Mode == GameMode.FreezeTag)
+                Mods.FreezeTag.FreezeTagLaunchPolicy.Trace("LocalServer.Start rotation", rotation[0].Mode);''')
+
+# Dedicated end-to-end, asset-free launch pipeline check.
+write('src/MphRead/Mods/FreezeTag/FreezeTagLaunchCheck.cs', r'''using System;
+using MphRead.Mods.Launcher;
+using MphRead.Mods.Network;
+
+namespace MphRead.Mods.FreezeTag;
+
+public static class FreezeTagLaunchCheck
+{
+    private static int _checks;
+    private static void Check(bool ok, string message)
+    {
+        _checks++;
+        if (!ok) throw new InvalidOperationException(message);
+    }
+
+    public static int Run()
+    {
+        try
+        {
+            _checks = 0;
+            MatchTypeDefinition type =
+                MatchTypeCatalog.GameTypes[MatchTypeCatalog.BaseModeIndex(GameMode.FreezeTag)];
+            MatchFormat format = MatchTypeCatalog.NormalizeFormat(type, MatchFormat.FreeForAll);
+            GameMode selected = type.Resolve(format);
+            Console.WriteLine($"SELECTED: {selected} ({(int)selected})");
+            Check(selected == GameMode.FreezeTag && format == MatchFormat.Auto,
+                "Freeze Tag selection/format normalization changed the mode");
+            Check(MatchTypeCatalog.BaseModeIndex(GameMode.FreezeTag) != 0
+                && type.Label == "Freeze Tag", "Freeze Tag catalog lookup fell back to Battle");
+
+            var settings = new MenuSettings { FriendlyFire = "off", AffinityWeapons = "off",
+                Fiesta = "off", InstaGib = "off", LowTier = "off", NoImperialist = "off",
+                BalancedMode = "off", ShadowFreeze = "off", SpawnProtection = "off",
+                AutoReset = "off" };
+            LaunchPlan plan = OfflineLaunch.Create(settings, "MP1 SANCTORUS",
+                GameMode.FreezeTag, Hunter.Samus, 0, 1, 1);
+            Check(plan.Mode == GameMode.FreezeTag && plan.MatchRules.Mode == GameMode.FreezeTag,
+                "Offline launch plan changed Freeze Tag");
+
+            var request = new HostRequestPacket
+            {
+                Protocol = NetConfig.ProtocolVersion, MaxPlayers = 8,
+                Mode = (byte)GameMode.FreezeTag, TimeLimit = 180, PointGoal = 5,
+                RoomKey = "MP1 SANCTORUS", ServerName = "Freeze Tag check",
+                Policy = ServerSessionPolicy.Lobby, Format = MatchFormat.Auto,
+                MapIdentity = NetworkMapIdentity.ForRoom("MP1 SANCTORUS"),
+                Rotation = new[] { HostRotationEntry.ForRoom("MP1 SANCTORUS", GameMode.FreezeTag) },
+                HostNonce = 1, HostCookie = 1
+            };
+            byte[] hostWire = new byte[request.Length];
+            request.Write(hostWire);
+            HostRequestPacket hostRead = HostRequestPacket.Read(hostWire);
+            Console.WriteLine($"HOST REQUEST: {(GameMode)hostRead.Mode} ({hostRead.Mode})");
+            Check(hostRead.Mode == (byte)GameMode.FreezeTag
+                && hostRead.Rotation is { Count: 1 }
+                && hostRead.Rotation[0].Mode == GameMode.FreezeTag,
+                "Host request/rotation changed Freeze Tag");
+
+            var match = new MatchDefinition { RoomKey = "MP1 SANCTORUS",
+                Mode = GameMode.FreezeTag, Format = MatchFormat.Auto,
+                PointGoal = 5, TimeLimitSeconds = 180 };
+            Check(LobbyRules.ValidateDefinition(match, out string why) == LobbyResultCode.Ok,
+                "Freeze Tag lobby definition rejected: " + why);
+            var session = new SessionStatePacket { Match = match, MaxPlayers = 8,
+                Policy = ServerSessionPolicy.Lobby, Phase = SessionPhase.Lobby };
+            byte[] wire = new byte[SessionStatePacket.Size]; session.Write(wire);
+            Check(SessionStatePacket.TryRead(wire, out var read)
+                && read.Match.Mode == GameMode.FreezeTag, "Session packet changed Freeze Tag");
+            Console.WriteLine($"SERVER LOBBY: {read.Match.Mode} ({(int)read.Match.Mode})");
+            Console.WriteLine($"CLIENT LOBBY: {read.Match.Mode} ({(int)read.Match.Mode})");
+
+            var state = new SceneGameState(new ScenePlayerRegistry());
+            state.ConfigureMatchMode(read.Match.Mode, applyDefaults:true);
+            Console.WriteLine($"START MATCH: {state.Mode} ({(int)state.Mode})");
+            Console.WriteLine($"SCENE MODE: {state.Mode} ({(int)state.Mode})");
+            Check(state.Mode == GameMode.FreezeTag && state.Teams
+                && state.ModeState.Method == typeof(FreezeTagRuntime).GetMethod(nameof(FreezeTagRuntime.Tick)),
+                "Scene did not retain Freeze Tag runtime");
+
+            Check(FreezeTagLaunchPolicy.RequiresMatchingLocalServer(GameMode.FreezeTag)
+                && !FreezeTagLaunchPolicy.RequiresMatchingLocalServer(GameMode.Battle),
+                "Freeze Tag matching-server policy is wrong");
+
+            Console.WriteLine($"[freezetaglaunchcheck] PASS {_checks} checks");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("[freezetaglaunchcheck] FAIL " + ex);
+            return 1;
+        }
+    }
+}
+''')
+
+edit('src/MphRead/Mods/ModEntry.cs',
+'''            if (HasFlag(args, "gamemodecheck"))
+            {
+                Environment.ExitCode = Network.GameModeCheck.Run();
+                return true;
+            }''',
+'''            if (HasFlag(args, "gamemodecheck"))
+            {
+                Environment.ExitCode = Network.GameModeCheck.Run();
+                return true;
+            }
+            if (HasFlag(args, "freezetaglaunchcheck"))
+            {
+                Environment.ExitCode = FreezeTag.FreezeTagLaunchCheck.Run();
+                return true;
+            }''')
+
+# Update build marker.
+edit('FREEZE_TAG_TEST_BUILD.txt',
+'''This build is an actual ProjectPrime.exe test client, not the prior HTML simulator.''',
+'''Lobby fix v1.2: Freeze Tag uses the matching packaged ProjectPrimeServer.exe and refuses stock remote hosted fallback.
+This build is an actual ProjectPrime.exe test client, not the prior HTML simulator.''')
+
 print('Freeze Tag patch complete')
