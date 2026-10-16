@@ -22,5 +22,7 @@ jobs:
           echo PROJECT_PRIME_LOCK_END
       - name: Typecheck
         run: npx tsc --noEmit
+      - name: Map API contract tests
+        run: npm run test:maps
       - name: Build site
         run: npm run build
