@@ -56,6 +56,7 @@ export default async function MapsPage({
         <div className="hero-actions">
           <Link href="/maps/upload" className="button">Publish a Map</Link>
           <Link href="/maps/my" className="button button-ghost">My Maps</Link>
+          <Link href="/maps/account" className="button button-ghost">Hunter Sign In</Link>
         </div>
       </section>
 
