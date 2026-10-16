@@ -2,11 +2,12 @@ import Link from "next/link";
 import { getVideoMetadata, projectPrimeVideos } from "@/lib/videos";
 
 const future = [
-  ["Hunter Profiles", "Search players, view Hunter Licenses, career stats and match history."],
-  ["Leaderboards", "Competitive rankings and deep statistics across supported game modes."],
-  ["Maps", "Discover curated map packs and community-created battlefields."],
-  ["Watch", "Live tournaments, broadcasts, spectator tools and future match replays."],
-];
+  ["Hunter License", "View your authenticated in-game career statistics, match history and progression.", "/license", true],
+  ["Leaderboards", "Browse server-accepted lifetime career rankings by mode and achievement.", "/leaderboards", true],
+  ["Maps", "Discover and publish custom community arenas.", "/maps", true],
+  ["Hunter Directory", "Explore the public profiles of Hunters who opted in.", "/hunters", true],
+  ["Watch", "Live tournaments, broadcasts and future match replays.", "/watch", false],
+] as const;
 
 export default async function Home() {
   const latestVideos = await Promise.all(
@@ -114,14 +115,15 @@ export default async function Home() {
             <span className="eyebrow">EXPLORE</span>
             <h2>The Project Prime platform</h2>
           </div>
-          <p>Today is the foundation. These areas are being designed now so they can grow into the full Project Prime ecosystem later.</p>
+          <p>Explore connected services across the Project Prime platform. Additional features continue to grow.</p>
         </div>
         <div className="feature-grid">
-          {future.map(([title, description]) => (
+          {future.map(([title, description, href, live]) => (
             <article className="feature-card" key={title}>
-              <span className="mini-tag">COMING SOON</span>
-              <h3>{title}</h3>
+              <span className="mini-tag">{live ? "AVAILABLE" : "COMING SOON"}</span>
+              <h3><Link href={href}>{title}</Link></h3>
               <p>{description}</p>
+              {live && <Link className="text-link" href={href}>Explore →</Link>}
             </article>
           ))}
         </div>
