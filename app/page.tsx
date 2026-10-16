@@ -26,12 +26,39 @@ export default async function Home() {
           </p>
           <div className="hero-actions">
             <Link className="button" href="/download">Download Project Prime</Link>
+            <a className="button button-ghost" href="#trailer">Watch Trailer</a>
             <Link className="button button-ghost" href="/community">Join the Community</Link>
           </div>
         </div>
         <div className="hero-status">
           <span className="status-dot" />
           <span>PROJECT PRIME // ACTIVE DEVELOPMENT</span>
+        </div>
+      </section>
+
+      <section className="section trailer-section" id="trailer">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">FEATURED TRAILER</span>
+            <h2>Watch Project Prime.</h2>
+          </div>
+          <p>This is the current featured trailer while a dedicated official Project Prime trailer is in production.</p>
+        </div>
+        <div className="featured-trailer panel">
+          <div className="video-frame featured-video-frame">
+            <iframe
+              src="https://www.youtube-nocookie.com/embed/zQsoELTXcvI"
+              title="Project Prime featured trailer"
+              loading="lazy"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+          <div className="featured-trailer-copy">
+            <span className="mini-tag">CURRENT TRAILER</span>
+            <p>A temporary featured showcase until the full official Project Prime trailer is released.</p>
+            <a className="text-link" href="https://youtu.be/zQsoELTXcvI" target="_blank" rel="noreferrer">Watch on YouTube →</a>
+          </div>
         </div>
       </section>
 
