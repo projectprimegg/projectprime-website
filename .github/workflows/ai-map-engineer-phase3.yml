@@ -65,7 +65,12 @@ jobs:
           mod = Path("src/MphRead/Mods/ModEntry.cs")
           m = mod.read_text(encoding="utf-8")
           anchor = '            if (HasFlag(args, "mapbuild"))\n'
-          insert = '            if (HasFlag(args, "mapagent"))\\n            {\\n                Environment.ExitCode = MapEditor.AiMapEngineerBatchCommand.Run(ValueAfter(args, "mapagent"));\\n                return true;\\n            }\\n'
+          nl = chr(10)
+          insert = ('            if (HasFlag(args, "mapagent"))' + nl
+              + '            {' + nl
+              + '                Environment.ExitCode = MapEditor.AiMapEngineerBatchCommand.Run(ValueAfter(args, "mapagent"));' + nl
+              + '                return true;' + nl
+              + '            }' + nl)
           if anchor not in m:
               raise SystemExit("mapbuild command anchor not found")
           m = m.replace(anchor, insert + anchor, 1)
