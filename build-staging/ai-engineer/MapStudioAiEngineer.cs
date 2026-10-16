@@ -55,8 +55,6 @@ internal sealed partial class MapStudioScreen
             AcceptsReturn = true,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
             Text = "Run a tool to see structured results.\n\nAvailable tools:\n" +
                 string.Join("\n", AiMapEngineerSession.Tools.Select(tool =>
                     $"• {tool.Name}{(tool.Mutating ? " [changes map]" : "")} — {tool.Description}"))
