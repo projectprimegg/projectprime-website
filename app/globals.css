@@ -380,3 +380,51 @@ a { color: inherit; text-decoration: none; }
   .license-milestones { grid-template-columns:1fr; }
   .license-stat { padding:14px; }
 }
+
+/* Public career leaderboards and opt-in Hunter directory */
+.career-hero { padding-top: 40px; }
+.career-hero h1 { font-size: clamp(2.9rem, 6vw, 5.5rem); line-height: 1.04; }
+.career-page { padding-bottom: 72px; }
+.career-filters, .career-search { padding: 20px; margin-bottom: 34px; }
+.career-filters { display: grid; grid-template-columns: auto minmax(140px,1fr) auto minmax(180px,1.3fr) auto; gap: 12px; align-items:center; }
+.career-filters label, .career-search label { color:var(--cyan-2); font-weight:750; font-size:.8rem; }
+.career-filters select, .career-search input { min-height:46px; padding:10px; color:var(--text); background:#0d1b2c; border:1px solid var(--line); font:inherit; width:100%; }
+.career-search label { display:block; margin:0 0 12px; }
+.career-title { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:24px 0; }
+.career-title h2 { font-size:clamp(1.7rem,3vw,2.5rem); margin:8px 0; }
+.career-title > span { color:var(--muted); }
+.career-notice, .career-disclosure { color:var(--muted); line-height:1.65; }
+.career-notice { border-left:2px solid var(--cyan); padding:12px 16px; background:rgba(85,216,255,.04); }
+.career-table-wrap { overflow-x:auto; }
+.career-table { width:100%; border-collapse:collapse; min-width:840px; text-align:left; }
+.career-table thead { background:rgba(85,216,255,.05); }
+.career-table th { color:var(--muted); font-size:.7rem; letter-spacing:.07em; text-transform:uppercase; padding:18px 14px; }
+.career-table td { padding:19px 14px; border-top:1px solid var(--line); font-variant-numeric:tabular-nums; }
+.career-table tbody tr:hover { background:rgba(85,216,255,.035); }
+.career-position, .career-score { font-weight:900; color:var(--cyan-2); }
+.career-score { font-size:1.1rem; }
+.career-public-link { font-weight:800; }
+.career-public-link:hover { color:var(--cyan); text-decoration:underline; }
+.career-private-name { color:var(--text); }
+.career-private-label { display:block; font-size:.65rem; color:var(--muted); margin-top:4px; }
+.career-empty { padding:24px; color:var(--muted); }
+.public-hunters-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.public-hunter-card { padding:26px; overflow-wrap:anywhere; }
+.public-hunter-card h3 { font-size:clamp(1.2rem,2vw,1.65rem); margin:12px 0 18px; }
+.public-hunter-card h3 a:hover { color:var(--cyan-2); }
+.public-hunter-metrics { display:flex; flex-direction:column; gap:8px; color:var(--muted); font-size:.84rem; }
+.public-hunter-identity { padding:36px; }
+.public-hunter-identity h1 { font-size:clamp(2.6rem,6vw,4.8rem); margin:0 0 18px; overflow-wrap:anywhere; }
+.public-hunter-identity p { color:var(--muted); max-width:700px; line-height:1.65; }
+@media(max-width:950px) {
+  .career-filters { grid-template-columns: 1fr 1fr; }
+  .career-filters label { grid-column: auto; }
+  .career-filters button { grid-column:1/-1; }
+  .public-hunters-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:590px) {
+  .career-filters { grid-template-columns:1fr; }
+  .public-hunters-grid { grid-template-columns:1fr; }
+  .career-title { align-items:flex-start; flex-direction:column; }
+  .public-hunter-identity { padding:22px; }
+}
