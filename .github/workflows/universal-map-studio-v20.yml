@@ -32,12 +32,19 @@ jobs:
         with:
           dotnet-version: 10.0.401
 
+      - name: Decode validated Universal Map Studio patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          [IO.File]::WriteAllBytes("universal-phase2-valid.patch.xz", [Convert]::FromBase64String((Get-Content "build-staging/universal-phase2-valid.patch.xz.b64" -Raw).Trim()))
+          7z x -y "universal-phase2-valid.patch.xz" -o"." | Out-Null
+
       - name: Apply Universal Map Studio patch
         shell: bash
         working-directory: prime
         run: |
           set -euxo pipefail
-          git apply --whitespace=nowarn ../build-staging/universal-phase2.patch
+          git apply --whitespace=nowarn ../universal-phase2-valid.patch
           git diff --check
           git status --short
 
