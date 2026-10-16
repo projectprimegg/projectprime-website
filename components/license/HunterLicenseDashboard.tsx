@@ -152,22 +152,23 @@ export function HunterLicenseDashboard() {
 
         <section className="panel license-privacy">
           <span className="mini-tag">PROFILE VISIBILITY</span>
-          <h2>Choose what other Hunters can see.</h2>
-          <p>When private, leaderboard scores are anonymous and your account
-            identifier, name and match history are not published. Opting in shows
-            your gamer name and a limited public career card, never your email
-            or private recent matches.</p>
+          <h2>Public by default. You're in control.</h2>
+          <p>Your Hunter nickname, favorite Hunter and accepted lifetime career
+            statistics are public by default. Turn the switch off to opt out:
+            other Hunters will no longer see your name or public License profile.
+            Your email, account UUID, sign-in details, cosmetics and private match
+            history are never published.</p>
           <label className="license-visibility-switch">
             <input type="checkbox" checked={visibility === true}
               disabled={visibility === null || privacyBusy}
               onChange={event => void setPublic(event.target.checked)} />
-            <span>Show my Hunter name and public career profile</span>
+            <span>Keep my Hunter License publicly visible (turn off to opt out)</span>
           </label>
           {privacyError && <p className="maps-error" role="status">{privacyError}</p>}
           {visibility === true &&
-            <p className="maps-success">Your Hunter is visible in public directory searches after cache refresh.</p>}
+            <p className="maps-success">Your public Hunter profile is visible. Switch off anytime to opt out.</p>}
           {visibility === false &&
-            <p className="helper">Your public profile is private by default.</p>}
+            <p className="helper">You opted out. Your name and public profile are hidden; accepted career scores remain anonymous.</p>}
         </section>
 
         <section className="license-section">
