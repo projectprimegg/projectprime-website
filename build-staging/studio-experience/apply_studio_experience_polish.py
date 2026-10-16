@@ -19,6 +19,7 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve()
     screen = root / "src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs"
     experience = root / "src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs"
+    ai_engineer = root / "src/MphRead/Mods/MapEditor/AiMapEngineer.cs"
 
     replace_once(
         screen,
@@ -214,6 +215,72 @@ def main() -> int:
             Load(project, path);
 ''',
         "duplicate-safe automatic import project",
+    )
+
+    replace_once(
+        ai_engineer,
+        '''        new AiMapEngineerToolDefinition("inspect_map", false, "Return map counts, identity, editor state and source configuration."),
+        new AiMapEngineerToolDefinition("find_objects", false, "Find objects by optional kind and label text. arguments: kind, label."),
+''',
+        '''        new AiMapEngineerToolDefinition("inspect_map", false, "Return map counts, identity, editor state and source configuration."),
+        new AiMapEngineerToolDefinition("inspect_studio_guidance", false, "Evaluate Beginner Mode and return the evidence-based next step. arguments: workflow, built, completed."),
+        new AiMapEngineerToolDefinition("find_objects", false, "Find objects by optional kind and label text. arguments: kind, label."),
+''',
+        "AI guidance tool definition",
+    )
+
+    replace_once(
+        ai_engineer,
+        '''                "inspect_map" => InspectMap(document),
+                "find_objects" => FindObjects(document, request.Arguments),
+''',
+        '''                "inspect_map" => InspectMap(document),
+                "inspect_studio_guidance" => InspectStudioGuidance(document, request.Arguments),
+                "find_objects" => FindObjects(document, request.Arguments),
+''',
+        "AI guidance tool dispatch",
+    )
+
+    replace_once(
+        ai_engineer,
+        '''    private static AiMapEngineerResult FindObjects(MapDocument document, JsonObject? args)
+    {
+''',
+        '''    private static AiMapEngineerResult InspectStudioGuidance(MapDocument document, JsonObject? args)
+    {
+        MapDefinition map = document.CaptureBuildSnapshot().CreateDefinition();
+        string requested = ReadString(args, "workflow");
+        StudioWorkflow workflow = Enum.TryParse(requested, ignoreCase: true, out StudioWorkflow parsed)
+            ? parsed
+            : StudioWorkflow.ImportExternalModel;
+        var completed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (args?["completed"] is JsonArray values)
+        {
+            foreach (JsonNode? value in values)
+            {
+                try
+                {
+                    string? item = value?.GetValue<string>();
+                    if (!String.IsNullOrWhiteSpace(item)) completed.Add(item);
+                }
+                catch (InvalidOperationException) { }
+            }
+        }
+        MapValidationResult validation = MapValidator.Validate(map, checkSources: false);
+        StudioGuidanceSnapshot guidance = StudioExperienceEngine.Evaluate(
+            map,
+            document.FilePath,
+            validation,
+            ReadBool(args, "built"),
+            workflow,
+            completed);
+        return AiMapEngineerResult.Ok("inspect_studio_guidance", guidance.Summary, guidance);
+    }
+
+    private static AiMapEngineerResult FindObjects(MapDocument document, JsonObject? args)
+    {
+''',
+        "AI guidance tool implementation",
     )
 
     print("Studio Experience Phase 4 polish integrated into", root)
