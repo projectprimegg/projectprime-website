@@ -4,8 +4,11 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using MphRead.Mods.MapEditor;
 
 namespace MphRead.Mods.Launcher.Gui;
@@ -47,6 +50,18 @@ internal sealed partial class MapStudioScreen
             TextWrapping = TextWrapping.Wrap,
             Text = "{\n  \"tool\": \"inspect_map\",\n  \"arguments\": {}\n}"
         };
+        // Some embedded/headless Avalonia hosts do not reliably execute the
+        // native TextBox paste command even though the GLFW system clipboard
+        // is available. Handle Ctrl+V explicitly here so a request copied from
+        // a browser, editor or ChatGPT can always enter the AI console.
+        _aiMapEngineerRequest.KeyDown += async (_, e) =>
+        {
+            if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                e.Handled = true;
+                await PasteAiRequestFromSystemClipboard();
+            }
+        };
         Grid.SetRow(_aiMapEngineerRequest, 1);
         view.Children.Add(_aiMapEngineerRequest);
 
@@ -65,6 +80,8 @@ internal sealed partial class MapStudioScreen
         var buttons = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
         Grid.SetRow(buttons, 3);
         view.Children.Add(buttons);
+        AddButton(buttons, "PASTE FROM WINDOWS", () => _ = PasteAiRequestFromSystemClipboard());
+        AddButton(buttons, "COPY RESULT", () => _ = CopyAiResultToSystemClipboard());
         AddButton(buttons, "INSPECT MAP", () => RunAiQuick("inspect_map"));
         AddButton(buttons, "INSPECT SELECTION", () => RunAiQuick("inspect_selection"));
         AddButton(buttons, "VALIDATE", () => RunAiQuick("validate_map"));
@@ -80,6 +97,77 @@ internal sealed partial class MapStudioScreen
         AddButton(buttons, "CANCEL TOOL", () => _aiMapEngineerWork?.Cancel());
         AddButton(buttons, "CLOSE", Dismiss);
         Modal(view, fitContent: true);
+
+        // Put the caret in the request box immediately; the user should not
+        // have to click twice before Ctrl+V can work in a modal.
+        Dispatcher.UIThread.Post(() =>
+        {
+            _aiMapEngineerRequest?.Focus();
+            _aiMapEngineerRequest?.SelectAll();
+        }, DispatcherPriority.Input);
+    }
+
+    private async Task PasteAiRequestFromSystemClipboard()
+    {
+        if (_aiMapEngineerRequest == null) return;
+        try
+        {
+            string? text;
+#if MPHREAD_SHELL
+            unsafe
+            {
+                text = OpenTK.Windowing.GraphicsLibraryFramework.GLFW.GetClipboardString(null);
+            }
+#else
+            text = TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard
+                ? await clipboard.TryGetTextAsync()
+                : null;
+#endif
+            if (string.IsNullOrEmpty(text))
+            {
+                _status.Text = "The system clipboard does not contain text.";
+                return;
+            }
+
+            _aiMapEngineerRequest.Text = text;
+            _aiMapEngineerRequest.CaretIndex = text.Length;
+            _aiMapEngineerRequest.Focus();
+            _status.Text = "Pasted request text from the system clipboard.";
+        }
+        catch (Exception ex)
+        {
+            _status.Text = "Could not read the system clipboard: " + ex.Message;
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task CopyAiResultToSystemClipboard()
+    {
+        string text = _aiMapEngineerOutput?.Text ?? string.Empty;
+        if (text.Length == 0)
+        {
+            _status.Text = "There is no AI Map Engineer result to copy.";
+            return;
+        }
+        try
+        {
+#if MPHREAD_SHELL
+            unsafe
+            {
+                OpenTK.Windowing.GraphicsLibraryFramework.GLFW.SetClipboardString(null, text);
+            }
+#else
+            if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+                throw new InvalidOperationException("System clipboard is unavailable in this view.");
+            await clipboard.SetTextAsync(text);
+#endif
+            _status.Text = "Copied AI Map Engineer result to the system clipboard.";
+        }
+        catch (Exception ex)
+        {
+            _status.Text = "Could not write to the system clipboard: " + ex.Message;
+        }
+        await Task.CompletedTask;
     }
 
     private void RunAiQuick(string tool, JsonObject? arguments = null)
