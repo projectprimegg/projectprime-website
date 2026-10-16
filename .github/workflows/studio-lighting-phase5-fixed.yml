@@ -1,0 +1,232 @@
+name: Universal Map Studio Real-Time Lighting Phase 5 Verified Windows client
+
+on:
+  push:
+    branches:
+      - ums-studio-lighting-phase5
+    paths:
+      - ".github/workflows/studio-lighting-phase5-fixed.yml"
+      - "build-staging/ai-engineer/**"
+      - "build-staging/studio-experience/**"
+      - "build-staging/lighting/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 80
+    steps:
+      - name: Checkout Studio Lighting staging
+        uses: actions/checkout@v4
+
+      - name: Checkout validated Universal Map Studio Phase 2 patch
+        uses: actions/checkout@v4
+        with:
+          repository: projectprimegg/projectprime-website
+          ref: ci/universal-map-studio-v20
+          path: phase2-staging
+
+      - name: Checkout Project Prime 0.1.53 integration base
+        uses: actions/checkout@v4
+        with:
+          repository: AntiNotAnti/Project-Prime
+          ref: 91b1c0c6c44e8c90effd250729709f791a84765e
+          path: prime
+
+      - name: Setup .NET 10.0.401
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Decode validated Universal Map Studio patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $encoded = "phase2-staging/build-staging/universal-phase2-valid.patch.xz.b64"
+          [IO.File]::WriteAllBytes("universal-phase2-valid.patch.xz", [Convert]::FromBase64String((Get-Content $encoded -Raw).Trim()))
+          7z x -y "universal-phase2-valid.patch.xz" -o"." | Out-Null
+
+      - name: Apply Universal Map Studio Phase 2
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git apply --whitespace=nowarn ../universal-phase2-valid.patch
+
+      - name: Integrate AI Map Engineer Phase 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/ai-engineer/apply_ai_engineer.py build-staging/ai-engineer prime
+
+      - name: Integrate Beginner and Advanced Studio Experience Phase 4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/studio-experience/apply_studio_experience.py build-staging/studio-experience prime
+          python build-staging/studio-experience/apply_studio_experience_polish.py prime
+          python build-staging/studio-experience/apply_studio_layout_fix.py prime
+
+      - name: Integrate Beginner AI and real-time Lighting Phase 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/lighting/apply_lighting_compat.py prime
+          python build-staging/lighting/apply_studio_lighting_phase5.py build-staging/lighting prime
+          python build-staging/lighting/apply_lighting_visuals.py prime
+
+      - name: Verify source delta
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git diff --check
+          test -f src/MphRead/Mods/MapGen/MapLighting.cs
+          test -f src/MphRead/Mods/Render/MapRuntimeLighting.cs
+          test -f src/MphRead/Mods/Launcher/Gui/MapStudioLighting.cs
+          test -f src/MphRead/Mods/Launcher/Gui/MapStudioAiBeginner.cs
+          test -f src/MphRead/Mods/MapEditor/AiMapEngineerLighting.cs
+          grep -q "MapLightingSettings" src/MphRead/Mods/MapGen/MapDefinition.cs
+          grep -q "MapLightingValidator.Validate" src/MphRead/Mods/MapGen/Validation/MapValidator.cs
+          grep -q "apply_dynamic_lighting" src/MphRead/Mods/Render/GraphicsPipeline.cs
+          grep -q "dynamic_light_pos_range" src/MphRead/Mods/Render/GraphicsPipeline.cs
+          grep -q "BindAuthoredMapLighting" src/MphRead/Entities/RoomEntity.cs
+          grep -q "AI ASSIST" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
+          grep -q "inspect_lighting" src/MphRead/Mods/MapEditor/AiMapEngineer.cs
+          grep -q "map-studio-real-time-lighting.png" src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
+          git status --short
+
+      - name: Restore Project Prime and editor checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet restore src/MphRead/MphRead.csproj -r win-x64
+          dotnet restore tools/map-editor-check/map-editor-check.csproj
+
+      - name: Run full Map Studio core checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-restore
+
+      - name: Run self-contained Studio and Lighting acceptance suite from source
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          $report = (Resolve-Path ..).Path + "\studio-lighting-source-report.json"
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- -noupdate -studioexperiencecheck -studioexperienceoutput $report | Tee-Object ../studio-lighting-source-console.json
+          if ($LASTEXITCODE -ne 0) { throw "Source Studio Lighting acceptance suite failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $report)) { throw "Source Studio Lighting acceptance report was not written." }
+          if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Source Studio Lighting acceptance report did not pass." }
+          if (-not (Select-String -Path $report -Pattern 'Point and spot lights pack into bounded runtime uniforms' -Quiet)) { throw "Real-time lighting acceptance check is missing." }
+          if (-not (Select-String -Path $report -Pattern 'OpenGL lighting compositor contains real-time light contracts' -Quiet)) { throw "Lighting shader acceptance check is missing." }
+
+      - name: Publish Windows x64 client
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish
+
+      - name: Verify published AI, Studio and Lighting contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "./publish/ProjectPrime.exe" -aimapengineerhelp | Tee-Object -FilePath "publish/AI_MAP_ENGINEER_TOOLS.json"
+          if ($LASTEXITCODE -ne 0) { throw "AI Map Engineer help command failed with exit code $LASTEXITCODE" }
+          $tools = Get-Content "publish/AI_MAP_ENGINEER_TOOLS.json" -Raw
+          foreach ($required in @("inspect_studio_guidance", "inspect_lighting", "add_light", "update_light", "set_lighting_globals", "create_lighting_rig")) {
+            if (-not $tools.Contains($required)) { throw "AI Map Engineer tool is missing: $required" }
+          }
+          $report = (Resolve-Path publish).Path + "\STUDIO_LIGHTING_ACCEPTANCE.json"
+          & "./publish/ProjectPrime.exe" -studioexperiencecheck -studioexperienceoutput $report | Tee-Object -FilePath "publish/STUDIO_LIGHTING_ACCEPTANCE_CONSOLE.json"
+          if ($LASTEXITCODE -ne 0) { throw "Published Studio Lighting acceptance suite failed with exit code $LASTEXITCODE" }
+          if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Published Studio Lighting acceptance report did not pass." }
+
+      - name: Capture Beginner AI and real-time Lighting layouts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Push-Location publish
+          try {
+            $executable = (Resolve-Path "./ProjectPrime.exe").Path
+            $capture = Start-Process -FilePath $executable -ArgumentList @("-noupdate", "-mapstudioshot", "StudioLightingShots") -Wait -PassThru
+            if ($capture.ExitCode -ne 0) { throw "Map Studio visual capture failed with exit code $($capture.ExitCode)" }
+          }
+          finally { Pop-Location }
+          foreach ($required in @(
+            "publish/StudioLightingShots/map-studio-beginner.png",
+            "publish/StudioLightingShots/map-studio-beginner-small.png",
+            "publish/StudioLightingShots/map-studio-advanced.png",
+            "publish/StudioLightingShots/map-studio-advanced-four-views.png",
+            "publish/StudioLightingShots/map-studio-real-time-lighting.png",
+            "publish/StudioLightingShots/map-studio-beginner-ai-assistant.png")) {
+            if (-not (Test-Path $required)) { throw "Missing Studio visual capture: $required" }
+            if ((Get-Item $required).Length -lt 10000) { throw "Studio visual capture is unexpectedly small: $required" }
+          }
+
+      - name: Write build provenance and test guide
+        shell: pwsh
+        run: |
+          @"
+          Project Prime Universal Map Studio — Real-Time Lighting Phase 5
+
+          Integrated foundation:
+          - Project Prime 0.1.53 integration base
+          - validated Universal Map Studio Phase 2
+          - controlled AI Map Engineer Phase 3
+          - Beginner/Advanced Studio Experience Phase 4
+
+          Added in Phase 5:
+          - AI MAP ENGINEER ASSISTANT remains visible in Beginner Mode
+          - plain-language WHAT SHOULD I DO NEXT, CHECK MY MAP and CHECK LIGHTING actions
+          - reversible AI lighting creation with automatic checkpoints
+          - authored real-time point lights
+          - authored real-time spot lights with inner/outer cones
+          - RGB color, position, direction, intensity, range and falloff controls
+          - pulsing/flicker amplitude, speed and phase controls
+          - global ambient color/intensity, exposure, diffuse and specular controls
+          - bounded 1-16 active-light OpenGL contract with up to 256 authored lights
+          - depth-reconstructed world positions and normals in the runtime compositor
+          - editable light hierarchy objects, selection, duplication, deletion and ordering
+          - point/spot gizmos and ranges in Map Studio
+          - three-point and neon-arena lighting presets
+          - AI tools: inspect_lighting, add_light, update_light, set_lighting_globals, create_lighting_rig
+          - deterministic lighting validation and shader-contract acceptance checks
+          - Beginner AI and Advanced Lighting visual captures
+
+          Local point and spot lights are real-time illumination. Directional shadows remain the existing directional-shadow system; this phase does not claim per-light point/spot shadow maps.
+
+          Run:
+          Start_ProjectPrime.cmd
+
+          Beginner Mode:
+          - press AI ASSIST
+          - start with WHAT SHOULD I DO NEXT?
+          - use CHECK LIGHTING or a safe starter lighting rig
+
+          Advanced Mode:
+          - open LIGHTING for every authored setting
+          - order lights to choose which are uploaded when the active-light limit is reached
+          - use PLAYTEST LIGHTING to inspect the actual runtime result
+          "@ | Set-Content -Encoding UTF8 publish/STUDIO_LIGHTING_PHASE5_README.txt
+          @"
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          ProjectPrime.exe -launcher -noupdate -userdata "%cd%\UserData"
+          "@ | Set-Content -Encoding ASCII publish/Start_ProjectPrime.cmd
+
+      - name: Upload Windows test client
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime-Universal-Map-Studio-Real-Time-Lighting-Phase5
+          path: publish/**
+          if-no-files-found: error
+          retention-days: 30
