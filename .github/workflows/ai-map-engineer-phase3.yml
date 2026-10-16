@@ -100,6 +100,10 @@ jobs:
             "stopOnFailure": true,
             "steps": [
               { "tool": "inspect_map", "arguments": {} },
+              { "tool": "inspect_geometry", "arguments": {} },
+              { "tool": "inspect_collision", "arguments": {} },
+              { "tool": "inspect_materials", "arguments": {} },
+              { "tool": "inspect_sources", "arguments": {} },
               { "tool": "create_checkpoint", "arguments": { "name": "baseline" } },
               { "tool": "rename_map", "arguments": { "name": "AI SMOKE ARENA" } },
               { "tool": "validate_map", "arguments": {} },
