@@ -1,53 +1,46 @@
-# Website Hunter career leaderboards and public profiles
+# Public Hunter directory and career leaderboards
 
-The website consumes the read-only Supabase `hunter-leaderboard` Edge
-Function implemented in AntiNotAnti/Project-Prime#624. This is not a second
-career ingestion pipeline, and no browser can write wins or rating.
+The website uses the read-only `hunter-leaderboard` Supabase Edge Function.
+All statistics come from Project Prime's existing authoritative server-
+accepted career projection; browsers cannot submit wins, kills or RP.
 
-## Pages
+## Public-by-default policy
 
-- `/leaderboards`: server-rendered, paginated lifetime leaderboard.
-  Whitelisted sorts: wins, kills, matches, K/D, win rate and headshots.
-  Filters use the exact numeric native GameMode IDs.
-- `/hunters`: directory of only those Hunter profiles whose owners
-  explicitly opted in, including nickname search.
-- `/hunters/{opaqueId}`: opted-in public career summary only.
-- `/license`: signed-in owner's private Hunter License and visibility
-  preference. Existing game account identity remains authoritative.
+- `/hunters` discovers Hunter Licenses by nickname unless their owner
+  explicitly opted out. This includes new Licenses with no eligible matches.
+- `/hunters/{opaqueId}` displays a limited public card: nickname, favorite
+  Hunter and accepted career totals. Opted-out profile links return 404.
+- `/leaderboards` shows **only accepted career** records with eligible matches.
+  Opted-out Hunters may rank anonymously, without name or public ID.
+- No public endpoint exposes Supabase Auth UUID, email, credentials, cosmetic
+  loadout, detailed recent match logs or raw reports.
 
-Private players may still contribute anonymous competition scores/ranks,
-but the server sends no name, auth account UUID or public profile slug for
-them. The website additionally masks any such fields from malformed
-backend rows. The directory search cannot reveal private profiles.
+Ranking sorts include wins, kills, matches, K/D, win rate and headshots,
+with canonical native game-mode filters. "Ranked" RP is never synthesized
+when the trusted rating transaction registry is empty.
 
-Rated matchmaking has no accepted rating transactions yet. The
-leaderboard explicitly labels its results as **career** statistics, not
-a ranked-rating or seasonal leaderboard. Do not synthesize an RP score
-from wins/kills.
+## Fresh privacy behavior
 
-## Configuration
+All public requests use a no-store response policy: direct profiles,
+directory search and ranked pages. A newly opted-out Hunter is not retained
+in Next.js data cache for subsequent requests. The Edge also returns
+no-store. Historical browser screenshots and pages loaded before opt-out
+cannot be rescinded retroactively.
 
-Website uses the existing `NEXT_PUBLIC_SUPABASE_URL` and
-`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from the map creator account.
-The server-side public ranking fetch uses that publishable key only.
-Never expose `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_DB_URL`.
+Every signed-in Hunter can change visibility on the website's /license page;
+guest Hunters can use the game's Account screen. The Supabase owner-only RPC
+stores explicit false to opt out and explicit true to rejoin. Neither path
+changes career results or match validity.
 
-Authenticated snapshot requests use POST /api/license/snapshot;
-they are private no-store responses, unlike public cached ranking pages.
-Public Edge reads have a 60-second cache TTL, so opting out may take
-up to one TTL to clear cached public pages.
+## Production
 
-## Release checklist
+Release the in-game opt-out and website copy **before** changing the live
+database function and Edge API, since existing unset accounts become
+publicly discoverable when the migration is applied.
+The website only uses publishable Supabase keys; Postgres and service-role
+credentials stay inside the Supabase backend.
 
-1. Apply backend privacy migration and run RLS/RPC permission tests.
-2. Deploy Supabase read-only `hunter-leaderboard` function.
-3. Merge website Hunter License PR before this PR, then release website.
-4. Verify real game-linked Hunter profile and private match history.
-5. Verify opted-out users show anonymous ranks, no public page.
-6. Opt in, check a searchable public name and limited profile.
-7. Opt out, verify 404 on old link after cache TTL.
-8. Verify mode filtering, pagination and empty rankings.
-9. Check anonymous/profile API never returns an email, auth UUID,
-   accepted raw match report or private recent-match payload.
-10. Verify bot-assisted matches and local match metrics do not affect
-    the trusted global career projection.
+Accept changes only after confirming zero-game public profiles, opt-out
+404, anonymous ranking, name-search exclusions, per-mode scores,
+guest opt-out, and private-field non-disclosure. Validate the exact
+website head SHA in CI and real browser behavior after deployment.
