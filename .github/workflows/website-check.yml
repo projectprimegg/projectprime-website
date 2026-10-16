@@ -19,5 +19,7 @@ jobs:
         run: npx tsc --noEmit
       - name: Map API contract tests
         run: npm run test:maps
+      - name: Hunter License contract tests
+        run: npm run test:license
       - name: Build site
         run: npm run build
