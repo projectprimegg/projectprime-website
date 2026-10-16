@@ -14,12 +14,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Emit reproducible dependency lock for review
-        run: |
-          echo PROJECT_PRIME_LOCK_BEGIN
-          cat package-lock.json
-          echo PROJECT_PRIME_LOCK_END
+        run: npm ci --no-audit --no-fund
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Map API contract tests
