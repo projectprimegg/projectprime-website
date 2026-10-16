@@ -1,0 +1,1 @@
+import { ComingSoon } from "@/components/ComingSoon"; export const metadata={title:"Leaderboards"}; export default function Page(){return <ComingSoon eyebrow="COMPETITIVE" title="Leaderboards" description="Global, seasonal and mode-specific rankings are planned for the Project Prime competitive platform."/>}
