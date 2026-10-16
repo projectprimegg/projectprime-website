@@ -82,6 +82,7 @@ jobs:
           grep -q "Import an external 3D map or environment" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
           grep -q "map-studio-beginner.png" src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
           grep -q "map-studio-advanced.png" src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
+          grep -q "inspect_studio_guidance" src/MphRead/Mods/MapEditor/AiMapEngineer.cs
           grep -q "studioexperiencecheck" src/MphRead/Mods/ModEntry.cs
           grep -q "Import stage 1/4" src/MphRead/Mods/Launcher/Gui/MapStudioModelImport.cs
           git status --short
@@ -125,6 +126,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           & "./publish/ProjectPrime.exe" -aimapengineerhelp | Tee-Object -FilePath "publish/AI_MAP_ENGINEER_TOOLS.json"
           if ($LASTEXITCODE -ne 0) { throw "AI Map Engineer help command failed with exit code $LASTEXITCODE" }
+          $tools = Get-Content "publish/AI_MAP_ENGINEER_TOOLS.json" -Raw
+          if (-not $tools.Contains("inspect_studio_guidance")) { throw "AI Map Engineer guidance tool is missing." }
           $report = (Resolve-Path publish).Path + "\STUDIO_EXPERIENCE_ACCEPTANCE.json"
           & "./publish/ProjectPrime.exe" -studioexperiencecheck -studioexperienceoutput $report | Tee-Object -FilePath "publish/STUDIO_EXPERIENCE_ACCEPTANCE_CONSOLE.json"
           if ($LASTEXITCODE -ne 0) { throw "Published Studio acceptance suite failed with exit code $LASTEXITCODE" }
@@ -136,8 +139,9 @@ jobs:
           $ErrorActionPreference = "Stop"
           Push-Location publish
           try {
-            & "./ProjectPrime.exe" -noupdate -mapstudioshot StudioExperienceShots
-            if ($LASTEXITCODE -ne 0) { throw "Map Studio visual capture failed with exit code $LASTEXITCODE" }
+            $executable = (Resolve-Path "./ProjectPrime.exe").Path
+            $capture = Start-Process -FilePath $executable -ArgumentList @("-noupdate", "-mapstudioshot", "StudioExperienceShots") -Wait -PassThru
+            if ($capture.ExitCode -ne 0) { throw "Map Studio visual capture failed with exit code $($capture.ExitCode)" }
           }
           finally { Pop-Location }
           foreach ($required in @(
@@ -165,6 +169,7 @@ jobs:
           - Advanced Mode retaining the complete existing Map Studio workspace
           - persistent mode, workflow and reviewed-step state per project
           - recommended next-step engine shared by UI, CI and AI tooling
+          - AI Map Engineer inspect_studio_guidance tool
           - plain-language workflow names and explanations
           - plain-language searchable help catalog
           - per-step ? information buttons
