@@ -80,6 +80,7 @@ jobs:
           python build-staging/zenith-phase6/apply_zenith_phase6.py build-staging/zenith-phase6 prime
           python build-staging/zenith-phase6/apply_zenith_compile_fixes.py prime
           python build-staging/zenith-phase6/apply_map_authoring_command.py build-staging/zenith-phase6 prime
+          python build-staging/zenith-phase6/apply_packed_scene_package_reader.py prime
 
       - name: Verify Phase 6 source delta
         shell: bash
@@ -95,6 +96,7 @@ jobs:
           grep -q "MapAltFormCertification.Certify" src/MphRead/Mods/MapGen/Build/MapCompiler.cs
           grep -q "PackedScene" src/MphRead/Mods/MapGen/MapDefinition.cs
           grep -q "scene/map.ppmesh" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
+          grep -q '".ppmesh"' src/MphRead/Mods/MapGen/Packaging/MapPackageReader.cs
           grep -q "MapAuthoringCommand.Run" src/MphRead/Mods/ModEntry.cs
           git status --short
 
