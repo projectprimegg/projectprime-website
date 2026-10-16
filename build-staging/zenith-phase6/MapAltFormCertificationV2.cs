@@ -32,16 +32,18 @@ public sealed record MapAltFormCertificationReport(
     IReadOnlyList<MapPlayerFormFailure> Failures)
 {
     public string Summary => Passed
-        ? $"All {Profiles} biped/alt-form profiles passed {Segments:N0} spawn-reachable fine route segments and {Samples:N0} swept samples."
-        : $"{Failures.Count:N0} biped/alt-form collision failure(s) were found across {Segments:N0} spawn-reachable fine route segments.";
+        ? $"All {Profiles} biped/alt-form profiles passed every applicable spawn-reachable fine route plus all mandatory spawn and transport checks across {Segments:N0} segments and {Samples:N0} swept samples."
+        : $"{Failures.Count:N0} biped/alt-form collision failure(s) were found across {Segments:N0} spawn-reachable fine route or mandatory transport segments.";
 }
 
 /// <summary>
 /// Mandatory collision gate for biped movement and every MPH hunter alt form.
 /// Certification follows the pre-decimation, short-step collision graph only in
-/// components reached by player spawns or authored traversal endpoints. It does
-/// not draw false straight lines between coarse bot-navigation representatives.
-/// Jump pads are checked separately along their actual parabolic flight path.
+/// components reached by player spawns or authored traversal endpoints. A larger
+/// form may be intentionally excluded from a narrow route only when it cannot fit
+/// at either endpoint; forms that fit at both ends must pass the entire sweep.
+/// Spawn clearances, authored endpoints, jump-pad trajectories and landings always
+/// require every profile. Coarse bot-navigation shortcuts are never used as tests.
 /// </summary>
 public static class MapAltFormCertification
 {
