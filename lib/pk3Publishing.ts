@@ -43,9 +43,12 @@ export async function scanPk3Levels(file: File): Promise<string[]> {
     const levels = new Set<string>();
     for (const entry of entries) {
       const canonical = entry.filename.replaceAll("\\", "/");
+      // Normal ZIP archives often include explicit directory entries that
+      // end in '/'. Match the stricter server-side validator's TrimEnd rule.
+      const segments = canonical.replace(/\/$/, "").split("/");
       if (entry.filename !== canonical || canonical.startsWith("/") ||
           canonical.includes(":") ||
-          canonical.split("/").some(segment => segment === "" ||
+          segments.some(segment => segment === "" ||
             segment === "." || segment === "..") ||
           entry.uncompressedSize > 128 * 1024 * 1024) {
         throw new Error("Quake source contains an unsupported or unsafe archive path.");
