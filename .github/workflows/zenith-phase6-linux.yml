@@ -6,6 +6,10 @@ on:
       - zenith-map-port-phase6
     paths:
       - ".github/workflows/zenith-phase6-linux.yml"
+      - "build-staging/zenith/**"
+      - "build-staging/lighting/**"
+      - "build-staging/studio-experience/**"
+      - "build-staging/ai-engineer/**"
   workflow_dispatch:
 
 permissions:
