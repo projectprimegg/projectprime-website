@@ -78,6 +78,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           python build-staging/zenith-phase6/apply_zenith_phase6.py build-staging/zenith-phase6 prime
+          python build-staging/zenith-phase6/apply_zenith_compile_fixes.py prime
 
       - name: Verify Phase 6 source delta
         shell: bash
