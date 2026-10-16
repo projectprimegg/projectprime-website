@@ -143,7 +143,10 @@ export async function browseHunterLeaderboard(options: {
 } = {}): Promise<Leaderboard> {
   const metric = isBoardMetric(options.metric) ? options.metric : "wins";
   const mode = isBoardMode(options.mode) ? options.mode : "all";
-  const page = Math.max(1, Math.min(100, Math.floor(options.page || 1)));
+  // Public directory includes Hunters with no matches, so it can exceed
+  // the original 2,500-position lifetime leaderboard window.
+  const maxPage = options.onlyPublic && mode === "all" ? 500 : 100;
+  const page = Math.max(1, Math.min(maxPage, Math.floor(options.page || 1)));
   const params = new URLSearchParams({ metric, mode, page: String(page) });
   if (options.search) params.set("q", options.search.slice(0, 40));
   if (options.onlyPublic) params.set("only_public", "1");
