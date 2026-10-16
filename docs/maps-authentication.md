@@ -11,7 +11,10 @@ Current game public defaults are used unless Vercel overrides:
 - `NEXT_PUBLIC_MAP_SERVICE_URL` (the game Community map origin)
 
 The website offers email sign-in and optional anonymous sign-in (when
-enabled in the Supabase project). The production project must allow
+enabled in the Supabase project **and** `NEXT_PUBLIC_ENABLE_GUEST_PUBLISHING=1`).
+Guest publishing is disabled by default to avoid easy per-account quota evasion
+through unlimited disposable browser identities. Enable only after rate limiting,
+CAPTCHA/abuse protection and moderation are accepted. The production project must allow
 `https://projectprime.gg/maps/account` and any intentional staging callback
 as an Auth redirect URL. The email provider and, optionally, anonymous
 sign-ins must be enabled in the Supabase Auth dashboard.
