@@ -372,4 +372,123 @@ Mode: Freeze Tag (GameMode 27)
 Core: lethal hit freezes; proximity thaw 3.5s; multiple rescuers accelerate; frozen-body knockback; hazards release; first-to-5 rounds; 30s late-round Double Damage; native team scoreboard labels; BattleTeams map layers.
 This build is an actual ProjectPrime.exe test client, not the prior HTML simulator.
 ''')
+
+# v1.1 launch-path repair: keep Freeze Tag recognized by every selector/label
+# and give the native HUD a valid rules block instead of leaving _rulesInfo null.
+edit('src/MphRead/Mods/Network/MatchTypeCatalog.cs',
+'''            mode is GameMode.BattleTeams or GameMode.SurvivalTeams or GameMode.Capture
+                or GameMode.BountyTeams or GameMode.NodesTeams or GameMode.DefenderTeams
+                or GameMode.HardpointTeams or GameMode.KillConfirmedTeams;''',
+'''            mode is GameMode.BattleTeams or GameMode.SurvivalTeams or GameMode.Capture or GameMode.FreezeTag
+                or GameMode.BountyTeams or GameMode.NodesTeams or GameMode.DefenderTeams
+                or GameMode.HardpointTeams or GameMode.KillConfirmedTeams;''')
+
+edit('src/MphRead/Mods/Launcher/Portable/OfflineLaunch.cs',
+'''                new("One in the Chamber", GameMode.OneInTheChamber),
+                new("Kill Confirmed", GameMode.KillConfirmed),''',
+'''                new("One in the Chamber", GameMode.OneInTheChamber),
+                new("Freeze Tag", GameMode.FreezeTag),
+                new("Kill Confirmed", GameMode.KillConfirmed),''')
+
+edit('src/MphRead/Entities/Players/PlayerHud.cs',
+'''            else if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams || mode == GameMode.OneInTheChamber)
+            {
+                _rulesInfo = HudElements.RulesInfo[1];
+            }''',
+'''            else if (mode == GameMode.FreezeTag)
+            {
+                // Freeze Tag needs a real native rule-layout object before SetUpHud
+                // formats the text below. Without this branch _rulesInfo remains null
+                // and scene startup aborts back to the launcher.
+                _rulesInfo = HudElements.RulesInfo[1];
+            }
+            else if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams || mode == GameMode.OneInTheChamber)
+            {
+                _rulesInfo = HudElements.RulesInfo[1];
+            }''')
+
+edit('src/MphRead/Entities/Players/PlayerHud.cs',
+'''                string line = mode == GameMode.GunGame ? i switch
+                {''',
+'''                string line = mode == GameMode.FreezeTag ? i switch
+                {
+                    0 => "FREEZE TAG",
+                    1 => "Freeze every enemy player to win the round.",
+                    2 => "Stay near frozen teammates to thaw them.",
+                    _ => "First team to five rounds wins."
+                } : mode == GameMode.GunGame ? i switch
+                {''')
+
+# Freeze Tag score rows use the existing native kill/death counters as
+# freezes/times-frozen; team Points remain round wins.
+edit('src/MphRead/Mods/Render/PlayerEntityTeamScoreboard.cs',
+'''                    DrawText2D(ModScoreColumn1, y, Align.Center, 0,
+                        TeamScoreValue(timed, _scene.GameState.TeamTime[team], _scene.GameState.TeamPoints[team]), visual.Color);
+                    DrawText2D(ModScoreColumn2, y, Align.Center, 0,
+                        (deaths ? _scene.GameState.TeamDeaths[team] : _scene.GameState.TeamKills[team]).ToString(), visual.Color);''',
+'''                    DrawText2D(ModScoreColumn1, y, Align.Center, 0,
+                        freezeTag ? _scene.GameState.TeamKills[team].ToString()
+                            : TeamScoreValue(timed, _scene.GameState.TeamTime[team], _scene.GameState.TeamPoints[team]), visual.Color);
+                    DrawText2D(ModScoreColumn2, y, Align.Center, 0,
+                        (freezeTag ? _scene.GameState.TeamDeaths[team]
+                            : deaths ? _scene.GameState.TeamDeaths[team] : _scene.GameState.TeamKills[team]).ToString(), visual.Color);''')
+edit('src/MphRead/Mods/Render/PlayerEntityTeamScoreboard.cs',
+'''                DrawText2D(ModScoreColumn1, y, Align.Center, 0,
+                    TeamScoreValue(timed, _scene.GameState.Time[slot], _scene.GameState.Points[slot]), ink);
+                DrawText2D(ModScoreColumn2, y, Align.Center, 0,
+                    (deaths ? _scene.GameState.Deaths[slot] : _scene.GameState.Kills[slot]).ToString(), ink);''',
+'''                DrawText2D(ModScoreColumn1, y, Align.Center, 0,
+                    freezeTag ? _scene.GameState.Kills[slot].ToString()
+                        : TeamScoreValue(timed, _scene.GameState.Time[slot], _scene.GameState.Points[slot]), ink);
+                DrawText2D(ModScoreColumn2, y, Align.Center, 0,
+                    (freezeTag ? _scene.GameState.Deaths[slot]
+                        : deaths ? _scene.GameState.Deaths[slot] : _scene.GameState.Kills[slot]).ToString(), ink);''')
+
+edit('src/MphRead/GameState.cs',
+'''            if (Mode == GameMode.BattleTeams)
+            {''',
+'''            if (Mode == GameMode.BattleTeams || Mode == GameMode.FreezeTag)
+            {''')
+
+# Asset-free regression checks for the launch/catalog/session path.
+edit('src/MphRead/Mods/Network/GameModeCheck.cs',
+'''            var state = new SceneGameState(new ScenePlayerRegistry());
+            foreach (GameMode previous in modes)''',
+'''            var state = new SceneGameState(new ScenePlayerRegistry());
+            MatchTypeDefinition freezeType = MatchTypeCatalog.GameTypes[MatchTypeCatalog.BaseModeIndex(GameMode.FreezeTag)];
+            Check(freezeType.TeamOnly && freezeType.Resolve(MatchFormat.FreeForAll) == GameMode.FreezeTag
+                && MatchTypeCatalog.NormalizeFormat(freezeType, MatchFormat.FreeForAll) == MatchFormat.Auto,
+                "Freeze Tag is a team-only first-class game type");
+            Check(MatchTypeCatalog.IsInternalTeamMode(GameMode.FreezeTag) && state.IsTeamMode(GameMode.FreezeTag),
+                "Freeze Tag survives team-mode classification");
+            state.ConfigureMatchMode(GameMode.FreezeTag, true);
+            Check(state.Mode == GameMode.FreezeTag && state.Teams
+                && state.PointGoal == Mods.FreezeTag.FreezeTagRules.RoundWinLimit
+                && state.ModeState.Method == typeof(Mods.FreezeTag.FreezeTagRuntime).GetMethod(nameof(Mods.FreezeTag.FreezeTagRuntime.Tick)),
+                "Freeze Tag selects its own runtime handler instead of Battle");
+            var freezeSession = new SessionStatePacket { Match = new MatchDefinition
+                { RoomKey = "MP1 SANCTORUS", Mode = GameMode.FreezeTag, Format = MatchFormat.Auto,
+                    PointGoal = Mods.FreezeTag.FreezeTagRules.RoundWinLimit }, MaxPlayers = 8 };
+            byte[] freezeBytes = new byte[SessionStatePacket.Size]; freezeSession.Write(freezeBytes);
+            Check(SessionStatePacket.TryRead(freezeBytes, out var freezeRead)
+                && freezeRead.Match.Mode == GameMode.FreezeTag,
+                "Freeze Tag roundtrips through authoritative session state");
+            foreach (GameMode previous in modes)''')
+
+# Freeze Tag owns a per-round clock. Keep the engine's match clock disabled
+# until five rounds are won, then set it to zero to enter Project Prime results.
+c = (root/'src/MphRead/Mods/FreezeTag/FreezeTagRules.cs').read_text(encoding='utf-8')
+c = c.replace('''        Ensure(scene);
+        if (Phase == FreezeTagPhase.Finished) return;''',
+'''        Ensure(scene);
+        // The stock engine clock is a whole-match clock. Freeze Tag has a
+        // separate clock per round, so a positive MatchTime would end the
+        // entire match after the first round timer.
+        if (Phase != FreezeTagPhase.Finished) scene.GameState.MatchTime = -1;
+        if (Phase == FreezeTagPhase.Finished) return;''')
+c = c.replace('''        if(match){Phase=FreezeTagPhase.Finished; PhaseTicks=0; return;}''',
+'''        if(match){Phase=FreezeTagPhase.Finished; PhaseTicks=0; scene.GameState.MatchTime=0; return;}''')
+(root/'src/MphRead/Mods/FreezeTag/FreezeTagRules.cs').write_text(c,encoding='utf-8')
+print('patched FreezeTag round/match clock ownership')
+
 print('Freeze Tag patch complete')
