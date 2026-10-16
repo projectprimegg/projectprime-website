@@ -1,9 +1,12 @@
-name: AI Map Engineer Phase 3 Windows build
+name: AI Map Engineer Phase 3 Windows client
 
 on:
   push:
     branches:
       - ums-ai-engineer-phase3
+    paths:
+      - ".github/workflows/ai-map-engineer-phase3.yml"
+      - "build-staging/ai-engineer/**"
   workflow_dispatch:
 
 permissions:
@@ -12,19 +15,19 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     steps:
       - name: Checkout AI Engineer staging
         uses: actions/checkout@v4
 
-      - name: Checkout proven Universal Map Studio staging
+      - name: Checkout validated Universal Map Studio Phase 2 patch
         uses: actions/checkout@v4
         with:
           repository: projectprimegg/projectprime-website
           ref: ci/universal-map-studio-v20
-          path: ums-base
+          path: phase2-staging
 
-      - name: Checkout official Project Prime 0.1.53
+      - name: Checkout Project Prime 0.1.53
         uses: actions/checkout@v4
         with:
           repository: AntiNotAnti/Project-Prime
@@ -36,129 +39,111 @@ jobs:
         with:
           dotnet-version: 10.0.401
 
-      - name: Reconstruct Universal Map Studio and add AI Engineer
+      - name: Decode validated Universal Map Studio patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $encoded = "phase2-staging/build-staging/universal-phase2-valid.patch.xz.b64"
+          [IO.File]::WriteAllBytes("universal-phase2-valid.patch.xz", [Convert]::FromBase64String((Get-Content $encoded -Raw).Trim()))
+          7z x -y "universal-phase2-valid.patch.xz" -o"." | Out-Null
+
+      - name: Apply Universal Map Studio Phase 2
         shell: bash
+        working-directory: prime
         run: |
           set -euxo pipefail
-          base64 -d ums-base/build-staging/universal-phase2-valid.patch.xz.b64 | xz -dc > phase2.patch
-          cd prime
-          git apply --whitespace=nowarn ../phase2.patch
-          cp ../build-staging/ai-engineer/AiMapEngineerSession.cs src/MphRead/Mods/MapEditor/AiMapEngineerSession.cs
-          cp ../build-staging/ai-engineer/AiMapEngineerBatchCommand.cs src/MphRead/Mods/MapEditor/AiMapEngineerBatchCommand.cs
-          cp ../build-staging/ai-engineer/MapStudioAiEngineer.cs src/MphRead/Mods/Launcher/Gui/MapStudioAiEngineer.cs
-          python - <<'PY'
-          from pathlib import Path
-          p = Path("src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs")
-          s = p.read_text(encoding="utf-8")
-          old_build = 'MenuGroup("Build",("Validate",()=>_=Validate()),("Fix selected problem",FixSelectedProblem),("Build runtime",()=>_=Build(false)),'
-          new_build = 'MenuGroup("Build",("AI Map Engineer",ShowAiMapEngineer),("Validate",()=>_=Validate()),("Fix selected problem",FixSelectedProblem),("Build runtime",()=>_=Build(false)),'
-          old_toolbar = 'AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);'
-          new_toolbar = 'AddButton(toolbar, "IMPORT UNIVERSAL", ImportModel);\n            AddButton(toolbar, "AI ENGINEER", ShowAiMapEngineer);'
-          if old_build not in s:
-              raise SystemExit("post-Universal Build menu anchor not found")
-          if old_toolbar not in s:
-              raise SystemExit("post-Universal toolbar anchor not found")
-          s = s.replace(old_build, new_build, 1)
-          s = s.replace(old_toolbar, new_toolbar, 1)
-          p.write_text(s, encoding="utf-8")
+          git apply --whitespace=nowarn ../universal-phase2-valid.patch
 
-          mod = Path("src/MphRead/Mods/ModEntry.cs")
-          m = mod.read_text(encoding="utf-8")
-          anchor = '            if (HasFlag(args, "settingsarchive"))\n'
-          nl = chr(10)
-          insert = ('            if (HasFlag(args, "mapagent"))' + nl
-              + '            {' + nl
-              + '                Environment.ExitCode = MapEditor.AiMapEngineerBatchCommand.Run(ValueAfter(args, "mapagent"));' + nl
-              + '                return true;' + nl
-              + '            }' + nl)
-          if anchor not in m:
-              raise SystemExit("headless command anchor not found")
-          m = m.replace(anchor, insert + anchor, 1)
-          mod.write_text(m, encoding="utf-8")
-          PY
+      - name: Integrate AI Map Engineer Phase 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/ai-engineer/apply_ai_engineer.py build-staging/ai-engineer prime
+
+      - name: Verify source delta
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
           git diff --check
-          grep -R "AI Map Engineer" -n src/MphRead/Mods/MapEditor src/MphRead/Mods/Launcher/Gui
+          test -f src/MphRead/Mods/MapEditor/AiMapEngineer.cs
+          test -f src/MphRead/Mods/Launcher/Gui/MapStudioAiEngineer.cs
+          grep -q "AI Map Engineer" src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
+          grep -q "aimapengineerhelp" src/MphRead/Mods/ModEntry.cs
+          git status --short
 
-      - name: Restore
-        shell: pwsh
-        working-directory: prime
-        run: dotnet restore src/MphRead/MphRead.csproj -r win-x64
-
-      - name: Build client
-        shell: pwsh
-        working-directory: prime
-        run: dotnet build src/MphRead/MphRead.csproj -c Release --no-restore
-
-      - name: Run AI Engineer headless smoke test
+      - name: Restore Project Prime and editor checks
         shell: pwsh
         working-directory: prime
         run: |
-          @'
-          {
-            "project": "maps/arena/arena.json",
-            "output": "ai-smoke-output.json",
-            "stopOnFailure": true,
-            "steps": [
-              { "tool": "inspect_map", "arguments": {} },
-              { "tool": "inspect_geometry", "arguments": {} },
-              { "tool": "inspect_collision", "arguments": {} },
-              { "tool": "inspect_materials", "arguments": {} },
-              { "tool": "inspect_sources", "arguments": {} },
-              { "tool": "create_checkpoint", "arguments": { "name": "baseline" } },
-              { "tool": "rename_map", "arguments": { "name": "AI SMOKE ARENA" } },
-              { "tool": "validate_map", "arguments": {} },
-              { "tool": "restore_checkpoint", "arguments": { "name": "baseline" } },
-              { "tool": "validate_map", "arguments": {} }
-            ]
+          $ErrorActionPreference = "Stop"
+          dotnet restore src/MphRead/MphRead.csproj -r win-x64
+          dotnet restore tools/map-editor-check/map-editor-check.csproj
+
+      - name: Run Map Studio core checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-restore
+
+      - name: Publish Windows x64 client
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish
+
+      - name: Verify headless AI tool contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "./publish/ProjectPrime.exe" -aimapengineerhelp | Tee-Object -FilePath "publish/AI_MAP_ENGINEER_TOOLS.json"
+          if ($LASTEXITCODE -ne 0) { throw "AI Map Engineer help command failed with exit code $LASTEXITCODE" }
+          $tools = Get-Content "publish/AI_MAP_ENGINEER_TOOLS.json" -Raw
+          foreach ($required in @("inspect_map", "validate_map", "compile_map", "run_map_audit", "create_checkpoint", "restore_checkpoint")) {
+            if (-not $tools.Contains($required)) { throw "Missing AI tool: $required" }
           }
-          '@ | Set-Content -Encoding UTF8 ai-smoke.json
-          $batch = (Resolve-Path ai-smoke.json).Path
-          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-build -- -noupdate -mapagent $batch | Tee-Object ai-smoke-result.json
-          if (-not (Test-Path ai-smoke-output.json)) { throw "AI Engineer did not save smoke output." }
-          if (-not (Select-String -Path ai-smoke-result.json -Pattern '"success": true' -Quiet)) { throw "AI Engineer smoke batch did not succeed." }
 
-      - name: Build map editor checks
-        shell: pwsh
-        working-directory: prime
-        run: dotnet build tools/map-editor-check/map-editor-check.csproj -c Release
-
-      - name: Run map editor checks
-        shell: pwsh
-        working-directory: prime
-        run: dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-build
-
-      - name: Publish Windows x64
-        shell: pwsh
-        working-directory: prime
-        run: dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish
-
-      - name: Write build notes
+      - name: Write build provenance and test guide
         shell: pwsh
         run: |
           @"
-          Project Prime Universal AI Map Studio — AI Map Engineer Phase 3
+          Project Prime Universal AI Map Engineer Phase 3
 
-          Base: Project Prime v0.1.53 commit 91b1c0c6c44e8c90effd250729709f791a84765e
-          Universal Map Studio: proven Phase 2 patch
-          New AI Engineer capabilities:
-          - controlled structured tool runtime
-          - map/selection inspection
-          - validation and compile tools
-          - runtime map audit invocation
-          - problem reporting
-          - in-memory named checkpoints
-          - undo/redo integration
-          - controlled move/duplicate/delete/rename mutations
-          - explicit delete confirmation
-          - Map Studio AI Engineer console and quick actions
-          - headless -mapagent JSON batch host for multi-step agent sessions
-          - CI smoke proof of checkpoint -> mutate -> validate -> restore -> validate
-          - no arbitrary shell/filesystem tool exposure
+          Base:
+          - AntiNotAnti/Project-Prime v0.1.53
+          - commit 91b1c0c6c44e8c90effd250729709f791a84765e
+          - validated Universal Map Studio Phase 2 patch
 
-          This is an engineering test build. Provider/API integration and visual capture tools are subsequent AI Engineer stages.
-          "@ | Set-Content -Encoding UTF8 publish/AI_MAP_ENGINEER_PHASE3.txt
+          Added in this build:
+          - In-client AI MAP ENGINEER panel in Map Studio
+          - Structured, model-agnostic tool API
+          - Read-only inspection, validation, compilation and runtime-audit tools
+          - Reversible selection/map edits through normal MapDocument history
+          - Automatic checkpoints before significant mutating tools
+          - Named checkpoint creation/restoration
+          - Headless -aimapengineer and -aimapengineerhelp command path
+          - JSON results suitable for an external PP-Agent process
 
-      - name: Upload test client
+          First test:
+          1. Run Start_ProjectPrime.cmd.
+          2. Open Map Studio.
+          3. Open or create a project.
+          4. Choose Build > AI Map Engineer, or click AI ENGINEER.
+          5. Run INSPECT MAP, VALIDATE and CHECKPOINT.
+          6. Use RUN JSON for controlled tool requests.
+
+          This remains an engineering client. Direct cloud-model authentication and the later autonomous repair loop are intentionally not hardcoded into ProjectPrime.exe.
+          "@ | Set-Content -Encoding UTF8 publish/AI_MAP_ENGINEER_PHASE3_README.txt
+          @"
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          ProjectPrime.exe -launcher -noupdate -userdata "%cd%\UserData"
+          "@ | Set-Content -Encoding ASCII publish/Start_ProjectPrime.cmd
+
+      - name: Upload Windows test client
         uses: actions/upload-artifact@v4
         with:
           name: ProjectPrime-Universal-AI-Map-Engineer-Phase3
