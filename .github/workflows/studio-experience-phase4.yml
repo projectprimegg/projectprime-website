@@ -16,7 +16,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 65
+    timeout-minutes: 70
     steps:
       - name: Checkout Studio Experience staging
         uses: actions/checkout@v4
@@ -66,6 +66,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           python build-staging/studio-experience/apply_studio_experience.py build-staging/studio-experience prime
+          python build-staging/studio-experience/apply_studio_experience_polish.py prime
 
       - name: Verify source delta
         shell: bash
@@ -78,6 +79,9 @@ jobs:
           test -f src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
           grep -q "BEGINNER" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
           grep -q "ADVANCED" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
+          grep -q "Import an external 3D map or environment" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
+          grep -q "map-studio-beginner.png" src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
+          grep -q "map-studio-advanced.png" src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs
           grep -q "studioexperiencecheck" src/MphRead/Mods/ModEntry.cs
           grep -q "Import stage 1/4" src/MphRead/Mods/Launcher/Gui/MapStudioModelImport.cs
           git status --short
@@ -126,6 +130,25 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Published Studio acceptance suite failed with exit code $LASTEXITCODE" }
           if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Published Studio acceptance report did not pass." }
 
+      - name: Capture Beginner and Advanced Studio layouts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Push-Location publish
+          try {
+            & "./ProjectPrime.exe" -noupdate -mapstudioshot StudioExperienceShots
+            if ($LASTEXITCODE -ne 0) { throw "Map Studio visual capture failed with exit code $LASTEXITCODE" }
+          }
+          finally { Pop-Location }
+          foreach ($required in @(
+            "publish/StudioExperienceShots/map-studio-beginner.png",
+            "publish/StudioExperienceShots/map-studio-beginner-small.png",
+            "publish/StudioExperienceShots/map-studio-advanced.png",
+            "publish/StudioExperienceShots/map-studio-advanced-four-views.png")) {
+            if (-not (Test-Path $required)) { throw "Missing Studio visual capture: $required" }
+            if ((Get-Item $required).Length -lt 10000) { throw "Studio visual capture is unexpectedly small: $required" }
+          }
+
       - name: Write build provenance and test guide
         shell: pwsh
         run: |
@@ -142,29 +165,33 @@ jobs:
           - Advanced Mode retaining the complete existing Map Studio workspace
           - persistent mode, workflow and reviewed-step state per project
           - recommended next-step engine shared by UI, CI and AI tooling
-          - plain-language help catalog
+          - plain-language workflow names and explanations
+          - plain-language searchable help catalog
           - per-step ? information buttons
           - automatic tooltips on common buttons
-          - searchable Map Studio help
+          - uncluttered Beginner toolbar and focused viewport/guide layout
           - self-contained automated acceptance tests in the client
           - headless -studioexperiencecheck command
+          - generic and UniversalMap import regression coverage
           - generated OBJ/MTL + companion collision regression fixture
-          - automatic editable project creation before model import
+          - automatic duplicate-safe editable project creation before model import
           - visible model source/project paths
           - four-stage import status messages
           - two-minute import timeout with a clear failure instead of a silent apparent hang
+          - headless visual captures for Beginner, compact Beginner, Advanced and four-view Advanced layouts
 
           Beginner Mode workflows:
-          1. Import an external 3D model
-          2. Build a map from scratch
-          3. Edit an existing map
-          4. Prepare a map for online play
+          1. Import an external 3D map or environment
+          2. Create a new map from scratch
+          3. Edit or repair an existing map
+          4. Prepare a finished map for online play
 
           Automated verification performed by this artifact:
           - full existing Map Studio core check suite
           - model source readability
           - companion collision detection
-          - bounded model import
+          - bounded generic model import
+          - UniversalMap adapter, validation and Project Prime backend conversion
           - nonempty render and collision geometry
           - finite vertices and valid indices
           - project application and source tracking
@@ -175,11 +202,12 @@ jobs:
           - help coverage
           - published executable AI tool contract
           - published executable Studio acceptance suite
+          - visual layout captures for both experience modes
 
           Run:
           Start_ProjectPrime.cmd
 
-          In Map Studio, use BEGINNER for the guided workflow or ADVANCED for every existing tool.
+          In Map Studio, use BEGINNER for the guided workflow or ADVANCED for the complete expert workspace.
           AUTO TEST runs the built-in acceptance suite and produces a copyable JSON report.
           "@ | Set-Content -Encoding UTF8 publish/STUDIO_EXPERIENCE_PHASE4_README.txt
           @"
