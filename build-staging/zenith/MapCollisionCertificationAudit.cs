@@ -18,8 +18,9 @@ public static partial class MapCollisionHealer
             // authored AltColYPos is below the sphere radius, the runtime lifts
             // Position by the difference before solving collision.
             float center = MathF.Max(radius, Fixed.ToFloat(values.AltColYPos));
-            string name = Enum.IsDefined(typeof(Hunter), index)
-                ? ((Hunter)index).ToString() : "Hunter " + index;
+            byte hunterValue = checked((byte)index);
+            string name = Enum.IsDefined(typeof(Hunter), hunterValue)
+                ? ((Hunter)hunterValue).ToString() : "Hunter " + index;
             return new AltFormProbe(name, radius, center);
         }).ToArray();
 
