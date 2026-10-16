@@ -53,3 +53,5 @@ The site auto-deploys when changes are pushed to the production branch connected
 ## Deployment connection
 
 Vercel Git integration is connected directly to `projectprimegg/projectprime-website`, so pushes to the production branch trigger deployments automatically.
+
+Repository connection revalidated after the organization transfer.
