@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:maps": "node --experimental-strip-types --test tests/communityMaps.test.mjs"
+    "test:maps": "node --experimental-strip-types --test tests/communityMaps.test.mjs",
+    "test:license": "node --experimental-strip-types --test tests/hunterLicense.test.mjs"
   },
   "dependencies": {
     "next": "15.5.18",
