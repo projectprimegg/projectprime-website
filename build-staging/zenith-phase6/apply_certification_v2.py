@@ -17,8 +17,72 @@ def main() -> int:
     staging = Path(sys.argv[1]).resolve()
     root = Path(sys.argv[2]).resolve()
     mapgen = root / 'src/MphRead/Mods/MapGen'
-    shutil.copy2(staging / 'MapAltFormCertificationV2.cs',
-        mapgen / 'MapAltFormCertification.cs')
+    certification = mapgen / 'MapAltFormCertification.cs'
+    shutil.copy2(staging / 'MapAltFormCertificationV2.cs', certification)
+
+    # A larger alt form is allowed to be intentionally blocked from a narrow
+    # biped route. It becomes a certification failure only when that form fits
+    # at both endpoints but collides or loses support between them. Spawns,
+    # launch paths, destinations and authored traversal endpoints still require
+    # every profile because players may enter those locations in any form.
+    replace_once(certification,
+'''        void TestGroundedSegment(Vector3 start, Vector3 end, string route)
+''',
+'''        void TestGroundedSegment(Vector3 start, Vector3 end, string route,
+            bool requireAllProfiles = false)
+''','route eligibility signature')
+    replace_once(certification,
+'''            bool[] active = Enumerable.Repeat(true, Profiles.Count).ToArray();
+            for (int step = 0; step <= steps && active.Any(value => value); step++)
+''',
+'''            bool[] active = Enumerable.Repeat(true, Profiles.Count).ToArray();
+            if (!requireAllProfiles
+                && TryFloor(collision, start + Vector3.UnitY * 1.25f, 3f, 1.35f, out float startFloor)
+                && TryFloor(collision, end + Vector3.UnitY * 1.25f, 3f, 1.35f, out float endFloor))
+            {
+                Vector3 startFeet = new(start.X, startFloor + Skin, start.Z);
+                Vector3 endFeet = new(end.X, endFloor + Skin, end.Z);
+                BuiltFace[] startCandidates = collision.Query(startFeet + Vector3.UnitY * .8f, 1.75f).ToArray();
+                BuiltFace[] endCandidates = collision.Query(endFeet + Vector3.UnitY * .8f, 1.75f).ToArray();
+                // Biped remains mandatory because this graph is itself built from
+                // biped traversal. Other profiles are tested only where both ends
+                // are valid for that profile, avoiding false errors for deliberate
+                // narrow passages while still catching mid-route snags and tunneling.
+                for (int p = 1; p < Profiles.Count; p++)
+                {
+                    bool startClear = ProbeProfile(startCandidates, startFeet, Profiles[p],
+                        out int startContacts, out _);
+                    bool endClear = ProbeProfile(endCandidates, endFeet, Profiles[p],
+                        out int endContacts, out _);
+                    active[p] = startClear && endClear
+                        && startContacts < ContactLimit && endContacts < ContactLimit;
+                }
+            }
+            for (int step = 0; step <= steps && active.Any(value => value); step++)
+''','profile-specific route eligibility')
+    replace_once(certification,
+'''            TestGroundedSegment(origin, origin, "Spawn standing clearance");
+''',
+'''            TestGroundedSegment(origin, origin, "Spawn standing clearance", requireAllProfiles: true);
+''','all-profile spawn standing check')
+    replace_once(certification,
+'''                TestGroundedSegment(origin, end, "Spawn radial clearance");
+''',
+'''                TestGroundedSegment(origin, end, "Spawn radial clearance", requireAllProfiles: true);
+''','all-profile spawn radial check')
+    replace_once(certification,
+'''            TestJumpPad(pad, collision, TestAirSegment, TestGroundedSegment,
+''',
+'''            TestJumpPad(pad, collision, TestAirSegment,
+                (start, end, route) => TestGroundedSegment(start, end, route, requireAllProfiles: true),
+''','all-profile jump-pad landing check')
+    replace_once(certification,
+'''            TestGroundedSegment(from, from, $"{link.Kind} start clearance");
+            TestGroundedSegment(to, to, $"{link.Kind} destination clearance");
+''',
+'''            TestGroundedSegment(from, from, $"{link.Kind} start clearance", requireAllProfiles: true);
+            TestGroundedSegment(to, to, $"{link.Kind} destination clearance", requireAllProfiles: true);
+''','all-profile authored endpoint checks')
 
     healer = mapgen / 'MapCollisionHealer.cs'
     replace_once(healer,
@@ -83,7 +147,7 @@ def main() -> int:
                 &&result.Faces.Length>0)foreach(var view in _views)view.SetImported(result);
 ''','packed scene validation preview')
 
-    print('Fine-route player-form certification V2 and packed-scene Studio support integrated into', root)
+    print('Profile-aware fine-route certification and packed-scene Studio support integrated into', root)
     return 0
 
 
