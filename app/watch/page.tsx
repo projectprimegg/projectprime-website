@@ -1,0 +1,1 @@
+import { ComingSoon } from "@/components/ComingSoon"; export const metadata={title:"Watch"}; export default function Page(){return <ComingSoon eyebrow="LIVE & REPLAYS" title="Watch" description="Live tournaments, official broadcasts, spectator viewing and future match replay support will live here."/>}
