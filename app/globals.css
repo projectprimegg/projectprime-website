@@ -428,3 +428,27 @@ a { color: inherit; text-decoration: none; }
   .career-title { align-items:flex-start; flex-direction:column; }
   .public-hunter-identity { padding:22px; }
 }
+
+/* Quake .pk3 to Project Prime map publishing */
+.pk3-upload h2 { font-size: 2rem; margin: 12px 0; }
+.pk3-upload input[type="file"] { padding: 12px; }
+.pk3-upload .pk3-legal {
+  display: flex; gap: 13px; align-items: flex-start;
+  margin: 22px 0; padding: 16px; border: 1px solid var(--line);
+  background: rgba(85,216,255,.025); cursor: pointer;
+  line-height: 1.55; color: var(--muted);
+}
+.pk3-legal input[type="checkbox"] {
+  width: 21px; min-width: 21px; height: 21px; min-height: 21px;
+  accent-color: var(--cyan); margin: 0;
+}
+.pk3-job-review { margin: 30px 0; border-top: 1px solid var(--line); padding-top: 26px; }
+.pk3-job-review h3 { font-size: 1.8rem; margin: 12px 0; }
+.pk3-job-review p { overflow-wrap: anywhere; font-size: .92rem; }
+.pk3-job-review code { overflow-wrap: anywhere; color: var(--cyan-2); }
+.pk3-warning { border-left: 3px solid #dba558; background: rgba(219,165,88,.04);
+  padding: 18px; margin: 24px 0; }
+.pk3-warning h4 { font-size: 1.15rem; margin: 0; }
+.pk3-warning li { margin: 8px 0; color: var(--muted); }
+.pk3-upload .hero-actions { gap: 12px; }
+.pk3-upload .maps-transfer { margin-top: 25px; }
