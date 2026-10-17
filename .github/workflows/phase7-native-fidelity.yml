@@ -43,7 +43,9 @@ jobs:
           python build-staging/phase7/apply_mapmesh_uvs.py prime
           python build-staging/phase7/apply_q3_bsp_phase7.py prime
           python build-staging/phase7/apply_q3_import_lightmaps.py prime
+          python build-staging/phase7/apply_q3_native_packaging.py prime
           python build-staging/phase7/apply_phase7_check.py build-staging/phase7 prime
+          python build-staging/phase7/apply_phase7_packaging_checks.py prime
 
       - name: Verify Phase 7 source delta
         shell: bash
@@ -53,6 +55,7 @@ jobs:
           git diff --check
           test -f src/MphRead/Mods/MapGen/UniversalNativeMap.cs
           test -f src/MphRead/Mods/MapGen/Q3LightmapProcessing.cs
+          test -f src/MphRead/Mods/MapGen/Q3LightmapPackaging.cs
           test -f tools/phase7-check/phase7-check.csproj
           grep -q "NativeFidelity" src/MphRead/Mods/MapGen/MapDefinition.cs
           grep -q "AdditionalTexcoords" src/MphRead/Mods/MapGen/BuiltMap.cs
@@ -60,6 +63,8 @@ jobs:
           grep -q "ReadLightmaps" src/MphRead/Mods/MapGen/Q3Bsp.cs
           grep -q "ReadVisibility" src/MphRead/Mods/MapGen/Q3Bsp.cs
           grep -q "Q3NativeFidelity.Build" src/MphRead/Mods/MapGen/Q3Import.cs
+          grep -q "Q3LightmapPackaging.EncodePng" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
+          grep -q "Q3VisibilityAsset.Decode" src/MphRead/Mods/MapGen/Packaging/MapPackageReader.cs
           git status --short
 
       - name: Restore managed projects
@@ -101,18 +106,20 @@ jobs:
           Base Project Prime commit:
           d51e8637fbaa7f2c6313cf3589bf11ea68256b47
 
-          This artifact validates the first implementation slice only:
+          Validated implementation slices:
           - reusable Universal native-fidelity metadata
           - multiple UV channels
           - complete relevant Quake 3 BSP lump parsing
           - authentic lightmap-page and UV retention
           - fog, light-grid and PVS retention
           - deterministic Quake overbright processing
+          - PNG lightmap and bounded PVS package assets
+          - strict package reference validation
           - synthetic legal acceptance fixture
 
-          It is not the final Phase 7 delivery. Runtime OpenGL lightmap composition,
-          package assets, full shader translation, Studio controls, AI diagnostics,
-          Phase 6 packed-scene compatibility and real-map acceptance remain hard gates.
+          This remains an intermediate artifact. Runtime OpenGL lightmap composition,
+          full shader translation, Studio controls, AI diagnostics, Phase 6 packed-scene
+          compatibility and real-map acceptance remain hard gates.
           "@ | Set-Content -Encoding UTF8 publish-win/PHASE7_FOUNDATION_README.txt
           @"
           @echo off
