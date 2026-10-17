@@ -18,8 +18,12 @@ after = '''            Check(Q3LightmapProcessing.ToRgba32(overbright).Length
             Check(lightmapPng.AsSpan(0, 8).SequenceEqual(
                     new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }),
                 "lightmap packages as PNG");
-            Check(MphRead.Mods.Render.ModernTextureAsset.ProbeDimensions(lightmapPng)
-                    == (Q3LightmapProcessing.Width, Q3LightmapProcessing.Height),
+            int pngWidth = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(
+                lightmapPng.AsSpan(16, 4));
+            int pngHeight = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(
+                lightmapPng.AsSpan(20, 4));
+            Check(pngWidth == Q3LightmapProcessing.Width
+                    && pngHeight == Q3LightmapProcessing.Height,
                 "packaged lightmap dimensions validate");
             byte[] pvsAsset = Q3VisibilityAsset.Encode(bsp.Visibility!);
             Q3Visibility decodedPvs = Q3VisibilityAsset.Decode(pvsAsset);
