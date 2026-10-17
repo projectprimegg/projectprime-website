@@ -1,0 +1,130 @@
+name: Project Prime Phase 7 Native Fidelity
+
+on:
+  push:
+    branches:
+      - feature/phase7-universal-native-map-fidelity
+    paths:
+      - ".github/workflows/phase7-native-fidelity.yml"
+      - "build-staging/phase7/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Phase 7 staging
+        uses: actions/checkout@v4
+
+      - name: Checkout current Project Prime integration base
+        uses: actions/checkout@v4
+        with:
+          repository: AntiNotAnti/Project-Prime
+          ref: d51e8637fbaa7f2c6313cf3589bf11ea68256b47
+          path: prime
+
+      - name: Setup .NET 10.0.401
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Integrate Universal native-fidelity foundation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/phase7/apply_universal_files.py build-staging/phase7 prime
+          python build-staging/phase7/apply_mapdefinition_foundation.py prime
+          python build-staging/phase7/apply_builtmap_metadata.py prime
+          python build-staging/phase7/apply_builtface_uvs.py prime
+          python build-staging/phase7/apply_mapmesh_uvs.py prime
+          python build-staging/phase7/apply_q3_bsp_phase7.py prime
+          python build-staging/phase7/apply_q3_import_lightmaps.py prime
+          python build-staging/phase7/apply_phase7_check.py build-staging/phase7 prime
+
+      - name: Verify Phase 7 source delta
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git diff --check
+          test -f src/MphRead/Mods/MapGen/UniversalNativeMap.cs
+          test -f src/MphRead/Mods/MapGen/Q3LightmapProcessing.cs
+          test -f tools/phase7-check/phase7-check.csproj
+          grep -q "NativeFidelity" src/MphRead/Mods/MapGen/MapDefinition.cs
+          grep -q "AdditionalTexcoords" src/MphRead/Mods/MapGen/BuiltMap.cs
+          grep -q "AdditionalUvChannels" src/MphRead/Mods/MapGen/Geometry/MapGeometry.cs
+          grep -q "ReadLightmaps" src/MphRead/Mods/MapGen/Q3Bsp.cs
+          grep -q "ReadVisibility" src/MphRead/Mods/MapGen/Q3Bsp.cs
+          grep -q "Q3NativeFidelity.Build" src/MphRead/Mods/MapGen/Q3Import.cs
+          git status --short
+
+      - name: Restore managed projects
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet restore src/MphRead/MphRead.csproj -r win-x64
+          dotnet restore tools/map-editor-check/map-editor-check.csproj
+          dotnet restore tools/phase7-check/phase7-check.csproj
+
+      - name: Run Phase 7 deterministic checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet run --project tools/phase7-check/phase7-check.csproj -c Release --no-restore
+
+      - name: Run existing Map Studio checks
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-restore
+
+      - name: Publish Windows x64 OpenGL client
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish-win
+
+      - name: Add provenance
+        shell: pwsh
+        run: |
+          @"
+          Project Prime Phase 7 Native Fidelity — Foundation Build
+
+          Base Project Prime commit:
+          d51e8637fbaa7f2c6313cf3589bf11ea68256b47
+
+          This artifact validates the first implementation slice only:
+          - reusable Universal native-fidelity metadata
+          - multiple UV channels
+          - complete relevant Quake 3 BSP lump parsing
+          - authentic lightmap-page and UV retention
+          - fog, light-grid and PVS retention
+          - deterministic Quake overbright processing
+          - synthetic legal acceptance fixture
+
+          It is not the final Phase 7 delivery. Runtime OpenGL lightmap composition,
+          package assets, full shader translation, Studio controls, AI diagnostics,
+          Phase 6 packed-scene compatibility and real-map acceptance remain hard gates.
+          "@ | Set-Content -Encoding UTF8 publish-win/PHASE7_FOUNDATION_README.txt
+          @"
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          ProjectPrime.exe -launcher -noupdate -userdata "%cd%\UserData"
+          "@ | Set-Content -Encoding ASCII publish-win/Start_ProjectPrime.cmd
+
+      - name: Upload Phase 7 foundation client
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime-Phase7-Native-Fidelity-Foundation-Windows
+          path: publish-win/**
+          if-no-files-found: error
+          retention-days: 14
