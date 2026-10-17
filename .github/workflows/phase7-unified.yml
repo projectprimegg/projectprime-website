@@ -81,6 +81,7 @@ jobs:
           python build-staging/phase7/apply_q3_bsp_phase7.py prime
           python build-staging/phase7/apply_q3_import_lightmaps.py prime
           python build-staging/phase7/apply_q3_native_packaging.py prime
+          python build-staging/phase7/apply_source_baked_runtime.py build-staging/phase7 prime
           python build-staging/phase7/apply_phase7_check.py build-staging/phase7 prime
           python build-staging/phase7/apply_phase7_packaging_checks.py prime
 
@@ -94,11 +95,13 @@ jobs:
           test -f src/MphRead/Mods/MapGen/MapPackedScene.cs
           test -f src/MphRead/Mods/MapGen/MapAltFormCertification.cs
           test -f src/MphRead/Mods/MapGen/UniversalNativeMap.cs
-          test -f src/MphRead/Mods/MapGen/Q3LightmapPackaging.cs
+          test -f src/MphRead/Mods/MapGen/Q3LightmapOverlayAsset.cs
+          test -f src/MphRead/Mods/Render/SourceBakedLightingRuntime.cs
           grep -q "AI ASSIST" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
           grep -q "MapAltFormCertification.Certify" src/MphRead/Mods/MapGen/Build/MapCompiler.cs
           grep -q "CurrentAuthoredLighting" src/MphRead/Mods/Render/GraphicsPipeline.cs
-          grep -q "Q3LightmapPackaging.EncodePng" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
+          grep -q "ApplySourceBakedLighting" src/MphRead/Mods/Render/FrameRenderGraph.cs
+          grep -q "Q3LightmapOverlayAsset.Encode" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
           git status --short
 
       - name: Restore projects
@@ -151,8 +154,8 @@ jobs:
           @"
           Project Prime Phase 7 unified integration checkpoint.
           This package preserves the AI Map Engineer, Beginner/Advanced Studio,
-          real-time lighting, packed scene and all-hunter collision certification
-          while integrating the current Phase 7 native-fidelity foundation.
+          real-time lighting, packed scene and all-hunter collision certification,
+          and adds packaged Quake lightmaps plus the OpenGL baked-lighting world pass.
           It is not the final Phase 7 acceptance delivery.
           "@ | Set-Content -Encoding UTF8 publish-win/PHASE7_UNIFIED_CHECKPOINT.txt
 
