@@ -1,0 +1,212 @@
+name: Universal Map Studio Zenith Source-Pack Phase 7
+
+on:
+  push:
+    branches:
+      - ums-zenith-port-phase7
+    paths:
+      - ".github/workflows/zenith-phase7.yml"
+      - "build-staging/ai-engineer/**"
+      - "build-staging/studio-experience/**"
+      - "build-staging/lighting/**"
+      - "build-staging/zenith-phase6/**"
+      - "build-staging/zenith-phase7/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout Zenith Phase 7 staging
+        uses: actions/checkout@v4
+
+      - name: Checkout validated Universal Map Studio Phase 2 patch
+        uses: actions/checkout@v4
+        with:
+          repository: projectprimegg/projectprime-website
+          ref: ci/universal-map-studio-v20
+          path: phase2-staging
+
+      - name: Checkout Project Prime integration base
+        uses: actions/checkout@v4
+        with:
+          repository: AntiNotAnti/Project-Prime
+          ref: 91b1c0c6c44e8c90effd250729709f791a84765e
+          path: prime
+
+      - name: Setup .NET 10.0.401
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Decode and apply Universal Map Studio Phase 2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $encoded = "phase2-staging/build-staging/universal-phase2-valid.patch.xz.b64"
+          [IO.File]::WriteAllBytes("universal-phase2-valid.patch.xz", [Convert]::FromBase64String((Get-Content $encoded -Raw).Trim()))
+          7z x -y "universal-phase2-valid.patch.xz" -o"." | Out-Null
+          Push-Location prime
+          try { git apply --whitespace=nowarn ../universal-phase2-valid.patch }
+          finally { Pop-Location }
+
+      - name: Integrate AI Map Engineer Phase 3
+        shell: pwsh
+        run: python build-staging/ai-engineer/apply_ai_engineer.py build-staging/ai-engineer prime
+
+      - name: Integrate Studio Experience Phase 4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/studio-experience/apply_studio_experience.py build-staging/studio-experience prime
+          python build-staging/studio-experience/apply_studio_experience_polish.py prime
+          python build-staging/studio-experience/apply_studio_layout_fix.py prime
+
+      - name: Integrate real-time Lighting Phase 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/lighting/apply_lighting_compat.py prime
+          python build-staging/lighting/apply_studio_lighting_phase5.py build-staging/lighting prime
+          python build-staging/lighting/apply_lighting_visuals.py prime
+
+      - name: Integrate packed-scene and alt-form certification Phase 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/zenith-phase6/apply_zenith_phase6.py build-staging/zenith-phase6 prime
+          python build-staging/zenith-phase6/apply_zenith_compile_fixes.py prime
+          python build-staging/zenith-phase6/apply_map_authoring_command.py build-staging/zenith-phase6 prime
+          python build-staging/zenith-phase6/apply_packed_scene_package_reader.py prime
+          python build-staging/zenith-phase6/apply_fine_traversal_graph.py prime
+          python build-staging/zenith-phase6/apply_certification_v2.py build-staging/zenith-phase6 prime
+
+      - name: Integrate structured source-pack Phase 7
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/zenith-phase7/apply_zenith_phase7.py build-staging/zenith-phase7 prime
+
+      - name: Verify Phase 7 source delta
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git diff --check
+          test -f src/MphRead/Mods/MapGen/Universal/SourceArchiveUniversalAdapter.cs
+          test -f src/MphRead/Mods/MapGen/Universal/MapSourcePackCommand.cs
+          grep -q "structured-source-archive" src/MphRead/Mods/MapGen/Universal/SourceArchiveUniversalAdapter.cs
+          grep -q "projectprime-source.json" src/MphRead/Mods/MapGen/Universal/SourceArchiveUniversalAdapter.cs
+          grep -q "SourceArchiveUniversalAdapter" src/MphRead/Mods/MapGen/Universal/UniversalMapAdapter.cs
+          grep -q "mapsourceinspect" src/MphRead/Mods/ModEntry.cs
+          grep -q '".zip"' src/MphRead/Mods/Launcher/Gui/MapStudioModelImport.cs
+          grep -q "RequireAllHunterForms" src/MphRead/Mods/MapGen/MapPackedScene.cs
+          grep -q "MapAltFormCertification.Certify" src/MphRead/Mods/MapGen/Build/MapCompiler.cs
+          git status --short
+
+      - name: Restore projects
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet restore src/MphRead/MphRead.csproj -r win-x64
+          dotnet restore tools/map-editor-check/map-editor-check.csproj
+
+      - name: Run complete Map Studio regression suite
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-restore
+
+      - name: Run Studio and lighting acceptance suite
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          $report = (Resolve-Path ..).Path + "\zenith-phase7-studio-report.json"
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- -noupdate -studioexperiencecheck -studioexperienceoutput $report | Tee-Object ../zenith-phase7-studio-console.json
+          if ($LASTEXITCODE -ne 0) { throw "Studio acceptance suite failed with exit code $LASTEXITCODE" }
+          if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Studio acceptance report did not pass." }
+
+      - name: Run structured source-pack acceptance suite from source
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          $report = (Resolve-Path ..).Path + "\source-pack-source-report.json"
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- -noupdate -sourcepackcheck -sourcepackoutput $report | Tee-Object ../source-pack-source-console.json
+          if ($LASTEXITCODE -ne 0) { throw "Source-pack acceptance failed with exit code $LASTEXITCODE" }
+          if (-not (Select-String -Path $report -Pattern '"passed": true' -Quiet)) { throw "Source-pack acceptance report did not pass." }
+          if (-not (Select-String -Path $report -Pattern 'Archive traversal paths are rejected before extraction' -Quiet)) { throw "Archive safety check is missing." }
+          if (-not (Select-String -Path $report -Pattern 'separate render and collision geometry' -Quiet)) { throw "Separate collision check is missing." }
+
+      - name: Publish Windows x64 client
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish-win
+
+      - name: Verify published Phase 7 commands
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "./publish-win/ProjectPrime.exe" -aimapengineerhelp | Tee-Object -FilePath "publish-win/AI_MAP_ENGINEER_TOOLS.json"
+          if ($LASTEXITCODE -ne 0) { throw "AI Map Engineer contract failed." }
+          $report = (Resolve-Path publish-win).Path + "\SOURCE_PACK_ACCEPTANCE.json"
+          & "./publish-win/ProjectPrime.exe" -noupdate -sourcepackcheck -sourcepackoutput $report | Tee-Object -FilePath "publish-win/SOURCE_PACK_ACCEPTANCE_CONSOLE.json"
+          if ($LASTEXITCODE -ne 0) { throw "Published source-pack acceptance failed." }
+          if (-not (Select-String -Path $report -Pattern '"passed": true' -Quiet)) { throw "Published source-pack report did not pass." }
+          if (-not (Test-Path "publish-win/ProjectPrime.exe")) { throw "Windows client is missing." }
+
+      - name: Write launcher, manifest template and provenance
+        shell: pwsh
+        run: |
+          @"
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          ProjectPrime.exe -launcher -noupdate -userdata "%cd%\UserData"
+          "@ | Set-Content -Encoding ASCII publish-win/Start_ProjectPrime.cmd
+          @"
+          {
+            "schemaVersion": 1,
+            "name": "EXTERNAL_MAP",
+            "renderModel": "models/map.obj",
+            "collisionModel": "models/map_collision.obj",
+            "scale": 1.0,
+            "flipWinding": false,
+            "zUp": false,
+            "flipUvVertical": true
+          }
+          "@ | Set-Content -Encoding UTF8 publish-win/projectprime-source.example.json
+          @"
+          Project Prime Universal Map Studio — Zenith Source-Pack Phase 7
+
+          This build no longer assumes every ZIP is a Quake package. It inspects structured
+          external-map archives by content and routes OBJ/glTF/GLB render geometry plus an
+          optional dedicated collision model through UniversalMap.
+
+          Automated commands:
+          ProjectPrime.exe -mapsourceinspect source.zip -mapsourcereport inspection.json
+          ProjectPrime.exe -mapsourcevalidate source.zip -mapsourcereport validation.json
+          ProjectPrime.exe -sourcepackcheck -sourcepackoutput acceptance.json
+          ProjectPrime.exe -mapcompile map.json -mapreport compile.json
+          ProjectPrime.exe -mappackage map.json -mapoutput map.ppmap -mapreport package.json
+
+          Phase 6 remains the release gate: packed maps require biped and all hunter alt-form
+          profiles to pass spawn-reachable fine-route certification before compilation/package.
+          "@ | Set-Content -Encoding UTF8 publish-win/ZENITH_PHASE7_README.txt
+
+      - name: Upload Windows client
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime-Universal-Map-Studio-Zenith-Phase7-Windows
+          path: publish-win/**
+          if-no-files-found: error
+          retention-days: 30
