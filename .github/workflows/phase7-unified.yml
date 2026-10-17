@@ -1,0 +1,165 @@
+name: Project Prime Phase 7 Unified Client
+
+on:
+  push:
+    branches:
+      - feature/phase7-universal-native-map-fidelity
+    paths:
+      - ".github/workflows/phase7-unified.yml"
+      - "build-staging/ai-engineer/**"
+      - "build-staging/studio-experience/**"
+      - "build-staging/lighting/**"
+      - "build-staging/zenith-phase6/**"
+      - "build-staging/phase7/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unified:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout unified staging
+        uses: actions/checkout@v4
+
+      - name: Checkout latest verified Project Prime base
+        uses: actions/checkout@v4
+        with:
+          repository: AntiNotAnti/Project-Prime
+          ref: d51e8637fbaa7f2c6313cf3589bf11ea68256b47
+          path: prime
+
+      - name: Setup .NET 10.0.401
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Integrate AI Map Engineer Phase 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/ai-engineer/apply_ai_engineer.py build-staging/ai-engineer prime
+
+      - name: Integrate Beginner and Advanced Studio Phase 4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/studio-experience/apply_studio_experience.py build-staging/studio-experience prime
+          python build-staging/studio-experience/apply_studio_experience_polish.py prime
+          python build-staging/studio-experience/apply_studio_layout_fix.py prime
+
+      - name: Integrate real-time Lighting Phase 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/lighting/apply_lighting_compat.py prime
+          python build-staging/lighting/apply_studio_lighting_phase5.py build-staging/lighting prime
+          python build-staging/lighting/apply_lighting_visuals.py prime
+
+      - name: Integrate packed scenes and all-form certification Phase 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/zenith-phase6/apply_zenith_phase6.py build-staging/zenith-phase6 prime
+          python build-staging/zenith-phase6/apply_zenith_compile_fixes.py prime
+          python build-staging/zenith-phase6/apply_map_authoring_command.py build-staging/zenith-phase6 prime
+          python build-staging/zenith-phase6/apply_packed_scene_package_reader.py prime
+          python build-staging/zenith-phase6/apply_fine_traversal_graph.py prime
+          python build-staging/zenith-phase6/apply_certification_v2.py build-staging/zenith-phase6 prime
+
+      - name: Integrate Universal native fidelity Phase 7
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python build-staging/phase7/apply_universal_files.py build-staging/phase7 prime
+          python build-staging/phase7/apply_mapdefinition_foundation.py prime
+          python build-staging/phase7/apply_builtmap_metadata.py prime
+          python build-staging/phase7/apply_builtface_uvs.py prime
+          python build-staging/phase7/apply_mapmesh_uvs.py prime
+          python build-staging/phase7/apply_q3_bsp_phase7.py prime
+          python build-staging/phase7/apply_q3_import_lightmaps.py prime
+          python build-staging/phase7/apply_q3_native_packaging.py prime
+          python build-staging/phase7/apply_phase7_check.py build-staging/phase7 prime
+          python build-staging/phase7/apply_phase7_packaging_checks.py prime
+
+      - name: Verify unified source contracts
+        shell: bash
+        working-directory: prime
+        run: |
+          set -euxo pipefail
+          git diff --check
+          test -f src/MphRead/Mods/MapEditor/AiMapEngineer.cs
+          test -f src/MphRead/Mods/MapGen/MapPackedScene.cs
+          test -f src/MphRead/Mods/MapGen/MapAltFormCertification.cs
+          test -f src/MphRead/Mods/MapGen/UniversalNativeMap.cs
+          test -f src/MphRead/Mods/MapGen/Q3LightmapPackaging.cs
+          grep -q "AI ASSIST" src/MphRead/Mods/Launcher/Gui/MapStudioExperience.cs
+          grep -q "MapAltFormCertification.Certify" src/MphRead/Mods/MapGen/Build/MapCompiler.cs
+          grep -q "CurrentAuthoredLighting" src/MphRead/Mods/Render/GraphicsPipeline.cs
+          grep -q "Q3LightmapPackaging.EncodePng" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
+          git status --short
+
+      - name: Restore projects
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet restore src/MphRead/MphRead.csproj -r win-x64
+          dotnet restore tools/map-editor-check/map-editor-check.csproj
+          dotnet restore tools/phase7-check/phase7-check.csproj
+
+      - name: Run Phase 7 deterministic checks
+        shell: pwsh
+        working-directory: prime
+        run: dotnet run --project tools/phase7-check/phase7-check.csproj -c Release --no-restore
+
+      - name: Run complete Map Studio regression suite
+        shell: pwsh
+        working-directory: prime
+        run: dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-restore
+
+      - name: Run unified Studio lighting acceptance suite
+        shell: pwsh
+        working-directory: prime
+        run: |
+          $ErrorActionPreference = "Stop"
+          $report = (Resolve-Path ..).Path + "\phase7-unified-source-report.json"
+          dotnet run --project src/MphRead/MphRead.csproj -c Release --no-restore -- -noupdate -studioexperiencecheck -studioexperienceoutput $report | Tee-Object ../phase7-unified-source-console.json
+          if ($LASTEXITCODE -ne 0) { throw "Unified Studio acceptance suite failed." }
+          if (-not (Select-String -Path $report -Pattern '"Passed": true' -Quiet)) { throw "Unified Studio acceptance report did not pass." }
+
+      - name: Publish Windows x64 unified client
+        shell: pwsh
+        working-directory: prime
+        run: dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish-win
+
+      - name: Verify published tool contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "./publish-win/ProjectPrime.exe" -aimapengineerhelp | Tee-Object publish-win/AI_MAP_ENGINEER_TOOLS.json
+          if ($LASTEXITCODE -ne 0) { throw "AI Map Engineer help failed." }
+          if (-not (Test-Path publish-win/ProjectPrime.exe)) { throw "Windows client is missing." }
+          @"
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          ProjectPrime.exe -launcher -noupdate -userdata "%cd%\UserData"
+          "@ | Set-Content -Encoding ASCII publish-win/Start_ProjectPrime.cmd
+          @"
+          Project Prime Phase 7 unified integration checkpoint.
+          This package preserves the AI Map Engineer, Beginner/Advanced Studio,
+          real-time lighting, packed scene and all-hunter collision certification
+          while integrating the current Phase 7 native-fidelity foundation.
+          It is not the final Phase 7 acceptance delivery.
+          "@ | Set-Content -Encoding UTF8 publish-win/PHASE7_UNIFIED_CHECKPOINT.txt
+
+      - name: Upload unified Windows checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectPrime-Phase7-Unified-Checkpoint-Windows
+          path: publish-win/**
+          if-no-files-found: error
+          retention-days: 14
