@@ -25,6 +25,46 @@ after = '''            Check(Q3LightmapProcessing.ToRgba32(overbright).Length
             Q3Visibility decodedPvs = Q3VisibilityAsset.Decode(pvsAsset);
             Check(decodedPvs.IsVisible(0, 0), "PVS sidecar round-trip");
 
+            var overlayDefinition = new MapDefinition { Name = "OVERLAY_TEST", ScaleFactor = 0 };
+            var overlayMap = new BuiltMap(overlayDefinition);
+            var overlayFace = new BuiltFace(
+                new[]
+                {
+                    new OpenTK.Mathematics.Vector3(0, 0, 0),
+                    new OpenTK.Mathematics.Vector3(1.0001f, 0, 0),
+                    new OpenTK.Mathematics.Vector3(0, 1.0001f, 0)
+                },
+                new[]
+                {
+                    new OpenTK.Mathematics.Vector2(0, 0),
+                    new OpenTK.Mathematics.Vector2(1, 0),
+                    new OpenTK.Mathematics.Vector2(0, 1)
+                },
+                OpenTK.Mathematics.Vector3.UnitZ, 0, 1f)
+            {
+                LightmapPage = 0
+            };
+            overlayFace.AdditionalTexcoords[1] = new[]
+            {
+                new OpenTK.Mathematics.Vector2(0, 0),
+                new OpenTK.Mathematics.Vector2(1, 0),
+                new OpenTK.Mathematics.Vector2(0, 1)
+            };
+            overlayMap.Faces.Add(overlayFace);
+            Q3LightmapOverlayAsset.Overlay overlay =
+                Q3LightmapOverlayAsset.Build(overlayMap, overlayDefinition.ScaleFactor);
+            byte[] overlayBytes = Q3LightmapOverlayAsset.Encode(overlay);
+            Q3LightmapOverlayAsset.Overlay overlayRoundTrip =
+                Q3LightmapOverlayAsset.Decode(overlayBytes);
+            Check(overlayRoundTrip.Groups.Count == 1
+                    && overlayRoundTrip.VertexCount == 3
+                    && overlayRoundTrip.Groups[0].Page == 0,
+                "depth-matched lightmap overlay round-trip");
+            bool badOverlayRejected = false;
+            try { _ = Q3LightmapOverlayAsset.Decode(overlayBytes[..^1]); }
+            catch (InvalidDataException) { badOverlayRejected = true; }
+            Check(badOverlayRejected, "truncated lightmap overlay rejected safely");
+
             UniversalNativeMapData fidelity = Q3NativeFidelity.Build(bsp, 35f, "phase7-fixture");
 '''
 if text.count(before) != 1:
