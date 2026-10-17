@@ -1,0 +1,18 @@
+name: Test Zenith Library source download
+on:
+  push:
+    branches: [ums-studio-lighting-phase5]
+    paths: [".github/workflows/test-library-download.yml"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download source archive
+        run: |
+          set -euxo pipefail
+          curl --fail --location --retry 2 --output zenith.zip "https://chatgpt.com/api/library/files/libfile_c459f998594c8191812c1196c622085a/download"
+          ls -lh zenith.zip
+          test $(stat -c%s zenith.zip) -gt 250000000
+          unzip -t zenith.zip >/dev/null
