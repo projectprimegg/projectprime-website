@@ -36,6 +36,7 @@ jobs:
         with:
           repository: AntiNotAnti/Project-Prime
           ref: d51e8637fbaa7f2c6313cf3589bf11ea68256b47
+          fetch-depth: 0
           path: prime
 
       - name: Setup .NET 10.0.401
@@ -43,7 +44,7 @@ jobs:
         with:
           dotnet-version: 10.0.401
 
-      - name: Decode and apply Universal Map Studio Phase 2
+      - name: Decode and three-way apply Universal Map Studio Phase 2
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -52,7 +53,7 @@ jobs:
           [IO.File]::WriteAllBytes("universal-phase2-valid.patch.xz", [Convert]::FromBase64String((Get-Content $encoded -Raw).Trim()))
           7z x -y "universal-phase2-valid.patch.xz" -o"." | Out-Null
           Push-Location prime
-          try { git apply --whitespace=nowarn ../universal-phase2-valid.patch }
+          try { git apply --3way --whitespace=nowarn ../universal-phase2-valid.patch }
           finally { Pop-Location }
 
       - name: Integrate AI Map Engineer Phase 3
