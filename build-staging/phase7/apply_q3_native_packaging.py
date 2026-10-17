@@ -17,6 +17,17 @@ mapgen = root / 'src/MphRead/Mods/MapGen'
 
 fidelity = mapgen / 'Q3NativeFidelity.cs'
 rep(fidelity,
+'''            LightingMode = bsp.Lightmaps.Count > 0
+                ? UniversalLightingMode.SourceBakedAndRealtime
+                : UniversalLightingMode.VertexFallback
+''',
+'''            LightingMode = bsp.Lightmaps.Count > 0
+                ? UniversalLightingMode.SourceBakedAndRealtime
+                : UniversalLightingMode.VertexFallback,
+            LightmapOverlayAsset = bsp.Lightmaps.Count > 0
+                ? "native/q3/lightmap-overlay.pplm" : null
+''', 'lightmap overlay metadata')
+rep(fidelity,
 '''                Asset = $"native/q3/lightmaps/{page.Id:D4}.rgb",
 ''',
 '''                Asset = $"native/q3/lightmaps/{page.Id:D4}.png",
@@ -43,7 +54,20 @@ rep(builder,
                         UniversalLightmapPage metadata = definition.NativeFidelity.Lightmaps
                             .Single(value => value.Id == page.Id);
                         AddGenerated(metadata.Asset, Q3LightmapPackaging.EncodePng(page,
-                            metadata.OverbrightBits, rendererOverbrightBits: 0, metadata.Exposure));
+                            metadata.OverbrightBits, rendererOverbrightBits: 0,
+                            exposure: metadata.Exposure));
+                    }
+                    if (definition.NativeFidelity.LightmapOverlayAsset is { } overlayAsset)
+                    {
+                        MapDefinition overlayDefinition = MapProjectSerializer.Clone(definition);
+                        BuiltMap overlayMap = Q3Import.Build(
+                            overlayDefinition, verbose: false, cancellation);
+                        Q3LightmapOverlayAsset.Overlay overlay =
+                            Q3LightmapOverlayAsset.Build(overlayMap, definition.ScaleFactor);
+                        if (overlay.VertexCount > 0)
+                            AddGenerated(overlayAsset, Q3LightmapOverlayAsset.Encode(overlay));
+                        else
+                            definition.NativeFidelity.LightmapOverlayAsset = null;
                     }
                     if (sourceBsp.Visibility != null
                         && definition.NativeFidelity.Visibility?.Asset is { } visibilityAsset)
@@ -58,9 +82,9 @@ rep(reader,
                     or ".jpg" or ".jpeg" or ".tga" or ".ktx2" or ".ogg" or ".wav" or ".mp3"))
 ''',
 '''                if (ext is not (".json" or ".bsp" or ".obj" or ".tex" or ".png"
-                    or ".jpg" or ".jpeg" or ".tga" or ".ktx2" or ".pvs"
+                    or ".jpg" or ".jpeg" or ".tga" or ".ktx2" or ".pvs" or ".pplm"
                     or ".ogg" or ".wav" or ".mp3"))
-''', 'PVS package extension')
+''', 'native fidelity package extensions')
 rep(reader,
 '''            if (definition.Import is { } import)
             {
@@ -94,6 +118,12 @@ rep(reader,
                         || !entries.ContainsKey(CanonicalName(page.Asset)))
                         throw new InvalidDataException("Packaged lightmap page is missing or invalid.");
                 }
+                if (native.LightmapOverlayAsset is { } overlay)
+                {
+                    if (!entries.ContainsKey(CanonicalName(overlay)))
+                        throw new InvalidDataException("Packaged lightmap overlay is missing.");
+                    _ = Q3LightmapOverlayAsset.Decode(ReadRequired(entries, overlay));
+                }
                 if (native.Visibility?.Asset is { } pvs)
                 {
                     if (!pvs.EndsWith(".pvs", StringComparison.OrdinalIgnoreCase)
@@ -114,4 +144,4 @@ rep(validator,
                     r.Error("FP-MAP-NATIVE", problem);
 ''', 'native fidelity validation')
 
-print('Quake lightmap and PVS packaging integrated')
+print('Quake lightmap, overlay and PVS packaging integrated')
