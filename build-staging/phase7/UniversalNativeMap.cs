@@ -20,6 +20,8 @@ public sealed class UniversalNativeMapData
         = UniversalLightingMode.SourceBakedAndRealtime;
     /// <summary>Optional render-only geometry carrying UV1 for baked lighting.</summary>
     public string? LightmapOverlayAsset { get; set; }
+    /// <summary>Allow imported source light entities to augment authored lights.</summary>
+    public bool UseSourceLights { get; set; } = true;
     public List<UniversalUvSet> UvSets { get; set; } = new();
     public List<UniversalLightmapPage> Lightmaps { get; set; } = new();
     public List<UniversalSurfaceLighting> SurfaceLighting { get; set; } = new();
