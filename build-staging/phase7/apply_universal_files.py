@@ -12,6 +12,8 @@ for name in (
     "UniversalMaterialLayers.cs",
     "UniversalEnvironment.cs",
     "UniversalSourceMetadata.cs",
+    "Q3LightmapProcessing.cs",
+    "Q3NativeFidelity.cs",
 ):
     shutil.copy2(staging / name, target / name)
-print("Universal source contracts staged")
+print("Universal source contracts and Quake fidelity translators staged")
