@@ -55,7 +55,7 @@ jobs:
           try {
             # The latest Project Prime base has independently evolved MapStudioScreen.
             # Apply every compatible Phase 2 hunk, permit only that known UI file to
-            # produce rejects, then let the dedicated compatibility layers reconcile it.
+            # produce rejects, then reconcile those exact UI changes explicitly.
             $PSNativeCommandUseErrorActionPreference = $false
             git apply --reject --whitespace=nowarn ../universal-phase2-valid.patch
             $applyExit = $LASTEXITCODE
@@ -66,9 +66,7 @@ jobs:
               Write-Host "--- rejected hunk: $($reject.FullName)"
               Get-Content $reject.FullName | Write-Host
             }
-            $unexpected = @($rejects | Where-Object {
-              $_.FullName.Replace('\\','/') -notlike '*/src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs.rej'
-            })
+            $unexpected = @($rejects | Where-Object { $_.Name -ne "MapStudioScreen.cs.rej" })
             if ($unexpected.Count -gt 0) {
               throw "Universal Map Studio patch produced unexpected rejects: $($unexpected.FullName -join ', ')"
             }
@@ -78,6 +76,7 @@ jobs:
             $rejects | Remove-Item -Force
           }
           finally { Pop-Location }
+          python build-staging/phase7/apply_phase2_screen_compat.py prime
 
       - name: Integrate AI Map Engineer Phase 3
         shell: pwsh
