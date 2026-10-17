@@ -44,16 +44,39 @@ jobs:
         with:
           dotnet-version: 10.0.401
 
-      - name: Decode and three-way apply Universal Map Studio Phase 2
+      - name: Decode and apply Universal Map Studio Phase 2 with bounded compatibility rejects
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $PSNativeCommandUseErrorActionPreference = $true
           $encoded = "phase2-staging/build-staging/universal-phase2-valid.patch.xz.b64"
           [IO.File]::WriteAllBytes("universal-phase2-valid.patch.xz", [Convert]::FromBase64String((Get-Content $encoded -Raw).Trim()))
           7z x -y "universal-phase2-valid.patch.xz" -o"." | Out-Null
           Push-Location prime
-          try { git apply --3way --whitespace=nowarn ../universal-phase2-valid.patch }
+          try {
+            # The latest Project Prime base has independently evolved MapStudioScreen.
+            # Apply every compatible Phase 2 hunk, permit only that known UI file to
+            # produce rejects, then let the dedicated compatibility layers reconcile it.
+            $PSNativeCommandUseErrorActionPreference = $false
+            git apply --reject --whitespace=nowarn ../universal-phase2-valid.patch
+            $applyExit = $LASTEXITCODE
+            $PSNativeCommandUseErrorActionPreference = $true
+
+            $rejects = @(Get-ChildItem -Recurse -Filter *.rej)
+            foreach ($reject in $rejects) {
+              Write-Host "--- rejected hunk: $($reject.FullName)"
+              Get-Content $reject.FullName | Write-Host
+            }
+            $unexpected = @($rejects | Where-Object {
+              $_.FullName.Replace('\\','/') -notlike '*/src/MphRead/Mods/Launcher/Gui/MapStudioScreen.cs.rej'
+            })
+            if ($unexpected.Count -gt 0) {
+              throw "Universal Map Studio patch produced unexpected rejects: $($unexpected.FullName -join ', ')"
+            }
+            if ($applyExit -ne 0 -and $rejects.Count -eq 0) {
+              throw "Universal Map Studio patch failed without producing a reviewable reject."
+            }
+            $rejects | Remove-Item -Force
+          }
           finally { Pop-Location }
 
       - name: Integrate AI Map Engineer Phase 3
