@@ -36,6 +36,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           python build-staging/phase7/apply_universal_files.py build-staging/phase7 prime
           python build-staging/phase7/apply_mapdefinition_foundation.py prime
           python build-staging/phase7/apply_builtmap_metadata.py prime
@@ -76,6 +77,7 @@ jobs:
         working-directory: prime
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           dotnet restore src/MphRead/MphRead.csproj -r win-x64
           dotnet restore tools/map-editor-check/map-editor-check.csproj
           dotnet restore tools/phase7-check/phase7-check.csproj
@@ -85,6 +87,7 @@ jobs:
         working-directory: prime
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           dotnet run --project tools/phase7-check/phase7-check.csproj -c Release --no-restore
 
       - name: Run existing Map Studio checks
@@ -92,6 +95,7 @@ jobs:
         working-directory: prime
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           dotnet run --project tools/map-editor-check/map-editor-check.csproj -c Release --no-restore
 
       - name: Publish Windows x64 OpenGL client
@@ -99,6 +103,7 @@ jobs:
         working-directory: prime
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 --self-contained true --no-restore -o ../publish-win
 
       - name: Add provenance
