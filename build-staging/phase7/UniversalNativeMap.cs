@@ -18,6 +18,8 @@ public sealed class UniversalNativeMapData
     public string? SourceIdentity { get; set; }
     public UniversalLightingMode LightingMode { get; set; }
         = UniversalLightingMode.SourceBakedAndRealtime;
+    /// <summary>Optional render-only geometry carrying UV1 for baked lighting.</summary>
+    public string? LightmapOverlayAsset { get; set; }
     public List<UniversalUvSet> UvSets { get; set; } = new();
     public List<UniversalLightmapPage> Lightmaps { get; set; } = new();
     public List<UniversalSurfaceLighting> SurfaceLighting { get; set; } = new();
@@ -35,6 +37,10 @@ public sealed class UniversalNativeMapData
             problems.Add($"Unsupported Universal native-fidelity schema {SchemaVersion}.");
         if (String.IsNullOrWhiteSpace(SourceFormat) || SourceFormat.Length > 64)
             problems.Add("SourceFormat must contain 1-64 characters.");
+        if (LightmapOverlayAsset != null
+            && (String.IsNullOrWhiteSpace(LightmapOverlayAsset)
+                || !LightmapOverlayAsset.EndsWith(".pplm", StringComparison.OrdinalIgnoreCase)))
+            problems.Add("The baked-lighting overlay asset must be a .pplm entry.");
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (UniversalUvSet uv in UvSets)
