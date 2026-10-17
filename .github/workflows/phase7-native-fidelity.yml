@@ -44,6 +44,7 @@ jobs:
           python build-staging/phase7/apply_q3_bsp_phase7.py prime
           python build-staging/phase7/apply_q3_import_lightmaps.py prime
           python build-staging/phase7/apply_q3_native_packaging.py prime
+          python build-staging/phase7/apply_source_baked_runtime.py build-staging/phase7 prime
           python build-staging/phase7/apply_phase7_check.py build-staging/phase7 prime
           python build-staging/phase7/apply_phase7_packaging_checks.py prime
 
@@ -56,6 +57,8 @@ jobs:
           test -f src/MphRead/Mods/MapGen/UniversalNativeMap.cs
           test -f src/MphRead/Mods/MapGen/Q3LightmapProcessing.cs
           test -f src/MphRead/Mods/MapGen/Q3LightmapPackaging.cs
+          test -f src/MphRead/Mods/MapGen/Q3LightmapOverlayAsset.cs
+          test -f src/MphRead/Mods/Render/SourceBakedLightingRuntime.cs
           test -f tools/phase7-check/phase7-check.csproj
           grep -q "NativeFidelity" src/MphRead/Mods/MapGen/MapDefinition.cs
           grep -q "AdditionalTexcoords" src/MphRead/Mods/MapGen/BuiltMap.cs
@@ -63,8 +66,9 @@ jobs:
           grep -q "ReadLightmaps" src/MphRead/Mods/MapGen/Q3Bsp.cs
           grep -q "ReadVisibility" src/MphRead/Mods/MapGen/Q3Bsp.cs
           grep -q "Q3NativeFidelity.Build" src/MphRead/Mods/MapGen/Q3Import.cs
-          grep -q "Q3LightmapPackaging.EncodePng" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
+          grep -q "Q3LightmapOverlayAsset.Encode" src/MphRead/Mods/MapGen/Packaging/MapPackageBuilder.cs
           grep -q "Q3VisibilityAsset.Decode" src/MphRead/Mods/MapGen/Packaging/MapPackageReader.cs
+          grep -q "ApplySourceBakedLighting" src/MphRead/Mods/Render/FrameRenderGraph.cs
           git status --short
 
       - name: Restore managed projects
@@ -113,13 +117,14 @@ jobs:
           - authentic lightmap-page and UV retention
           - fog, light-grid and PVS retention
           - deterministic Quake overbright processing
-          - PNG lightmap and bounded PVS package assets
+          - PNG lightmap, depth-matched overlay and bounded PVS package assets
+          - OpenGL source-baked-lighting world pass
           - strict package reference validation
           - synthetic legal acceptance fixture
 
-          This remains an intermediate artifact. Runtime OpenGL lightmap composition,
-          full shader translation, Studio controls, AI diagnostics, Phase 6 packed-scene
-          compatibility and real-map acceptance remain hard gates.
+          This remains an intermediate artifact. Full shader translation, Studio controls,
+          AI diagnostics, visual GPU acceptance, Phase 6 unified compatibility and real-map
+          acceptance remain hard gates.
           "@ | Set-Content -Encoding UTF8 publish-win/PHASE7_FOUNDATION_README.txt
           @"
           @echo off
