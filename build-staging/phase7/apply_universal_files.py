@@ -14,6 +14,7 @@ for name in (
     "UniversalSourceMetadata.cs",
     "Q3LightmapProcessing.cs",
     "Q3LightmapPackaging.cs",
+    "Q3LightmapOverlayAsset.cs",
     "Q3NativeFidelity.cs",
 ):
     shutil.copy2(staging / name, target / name)
