@@ -77,7 +77,7 @@ export function MapUpload() {
     ? Math.max(0, Math.min(100, Math.floor(progress.done * 100 / progress.total))) : 0;
 
   return (
-    <form className="panel maps-upload" onSubmit={submit}>
+    <form id="ppmap-upload" className="panel maps-upload" onSubmit={submit}>
       <span className="mini-tag">WEBSITE TO GAME // CREATOR PIPELINE</span>
       <h2>Upload a playable map.</h2>
       <p>Export a .ppmap from Project Prime Studio. The server verifies its
