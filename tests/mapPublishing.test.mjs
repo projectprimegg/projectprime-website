@@ -31,6 +31,21 @@ const json = value => new Response(JSON.stringify(value), {
 });
 const uuid = value => "00000000-0000-0000-0000-" + String(value).padStart(12, "0");
 const hash = value => String(value).repeat(64);
+const clientFor = ownerId => ({ auth: { getSession: async () => ({
+  data: { session: { access_token: "jwt", user: { id: ownerId } } }, error: null,
+}) } });
+const mapFor = (contents, packageHash, mapId = uuid(9)) => ({
+  file: new File([contents], "map.ppmap"),
+  hash: packageHash,
+  manifest: { format: 3, mapId, name: "Map", contentHash: packageHash },
+});
+
+async function publishForNetworkTest(map, signal) {
+  return publishMapPackage({
+    map, client: clientFor("owner-a"), visibility: "Published", notes: "",
+    signal, progress() {},
+  });
+}
 
 test("bulk publication reuses one owner catalog while minting per-map tickets", async t => {
   const originalFetch = globalThis.fetch;
@@ -100,4 +115,119 @@ test("bulk publication reuses one owner catalog while minting per-map tickets", 
     [uuid(2), false, null],
     [uuid(1), true, hash("b")],
   ]);
+});
+
+test("a dropped chunk is reconciled before sending only the unconfirmed suffix", async t => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const contents = "abcdef";
+  const map = mapFor(contents, hash("e"));
+  const received = new Uint8Array(contents.length);
+  const putOffsets = [];
+  let serverOffset = 0;
+  let putCount = 0;
+  let recoveryGets = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method || "GET";
+    if (url === "/api/maps/ticket") return json({ ticket: "ticket-a" });
+    if (url.includes("/v2/maps?mine=true")) return json([]);
+    if (method === "POST" && url.includes("/uploads/") && !url.endsWith("/complete")) {
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+        chunkBytes: 4, complete: false });
+    }
+    if (method === "PUT" && url.includes("/uploads/")) {
+      const offset = Number(new URL(url).searchParams.get("offset"));
+      const chunk = new Uint8Array(await init.body.arrayBuffer());
+      putOffsets.push(offset);
+      if (offset !== serverOffset) return json({ message: "offset conflict" }, 409);
+      received.set(chunk, offset);
+      serverOffset += chunk.length;
+      putCount++;
+      if (putCount === 1) throw new TypeError("connection dropped after acceptance");
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: serverOffset,
+        chunkBytes: 4, complete: false });
+    }
+    if (method === "GET" && url.includes("/uploads/")) {
+      recoveryGets++;
+      return json({ packageHash: map.hash, bytes: map.file.size,
+        offset: serverOffset, chunkBytes: 4, complete: false });
+    }
+    if (method === "POST" && url.endsWith("/complete")) {
+      return json({ hash: map.hash, mapId: map.manifest.mapId });
+    }
+    throw new Error("Unexpected request " + method + " " + url);
+  };
+
+  await publishForNetworkTest(map, new AbortController().signal);
+  assert.deepEqual(putOffsets, [0, 4]);
+  assert.equal(recoveryGets, 1);
+  assert.deepEqual(received, new Uint8Array(new TextEncoder().encode(contents)));
+});
+
+test("repeated PUT and recovery GET network failures stop at the bounded retry limit", async t => {
+  const originalFetch = globalThis.fetch;
+  const originalRandom = Math.random;
+  t.after(() => { globalThis.fetch = originalFetch; Math.random = originalRandom; });
+  Math.random = () => 0;
+  const map = mapFor("data", hash("f"));
+  let putCount = 0;
+  let recoveryGets = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method || "GET";
+    if (url === "/api/maps/ticket") return json({ ticket: "ticket-a" });
+    if (url.includes("/v2/maps?mine=true")) return json([]);
+    if (method === "POST" && url.includes("/uploads/") && !url.endsWith("/complete")) {
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+        chunkBytes: map.file.size, complete: false });
+    }
+    if (method === "PUT" && url.includes("/uploads/")) {
+      putCount++;
+      throw new TypeError("offline");
+    }
+    if (method === "GET" && url.includes("/uploads/")) {
+      recoveryGets++;
+      throw new TypeError("offline");
+    }
+    throw new Error("Unexpected request " + method + " " + url);
+  };
+
+  await assert.rejects(publishForNetworkTest(map, new AbortController().signal),
+    /connection failed repeatedly and upload progress could not be confirmed/);
+  assert.equal(putCount, 1);
+  assert.equal(recoveryGets, 5);
+});
+
+test("cancelling during the network-recovery wait prevents a state retry", async t => {
+  const originalFetch = globalThis.fetch;
+  const originalRandom = Math.random;
+  t.after(() => { globalThis.fetch = originalFetch; Math.random = originalRandom; });
+  Math.random = () => 0;
+  const controller = new AbortController();
+  const map = mapFor("data", hash("d"));
+  let recoveryGets = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method || "GET";
+    if (url === "/api/maps/ticket") return json({ ticket: "ticket-a" });
+    if (url.includes("/v2/maps?mine=true")) return json([]);
+    if (method === "POST" && url.includes("/uploads/") && !url.endsWith("/complete")) {
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+        chunkBytes: map.file.size, complete: false });
+    }
+    if (method === "PUT" && url.includes("/uploads/")) {
+      setTimeout(() => controller.abort(), 10);
+      throw new TypeError("connection dropped");
+    }
+    if (method === "GET" && url.includes("/uploads/")) {
+      recoveryGets++;
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+        chunkBytes: map.file.size, complete: false });
+    }
+    throw new Error("Unexpected request " + method + " " + url);
+  };
+
+  await assert.rejects(publishForNetworkTest(map, controller.signal), { name: "AbortError" });
+  assert.equal(recoveryGets, 0);
 });

@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mapUploadRetryDelay, waitForMapUploadRetry } from "../lib/mapUploadRetry.ts";
+import {
+  mapUploadNetworkRetryDelay, mapUploadRetryDelay, waitForMapUploadRetry,
+} from "../lib/mapUploadRetry.ts";
 
 const responseWithRetryAfter = value => new Response(null, {
   headers: value == null ? {} : { "Retry-After": value },
@@ -17,6 +19,13 @@ test("retry delay honors numeric and HTTP-date Retry-After values with a bound",
 test("invalid retry headers retain the bounded exponential fallback", () => {
   assert.equal(mapUploadRetryDelay(responseWithRetryAfter("tomorrow"), 1), 200);
   assert.equal(mapUploadRetryDelay(responseWithRetryAfter(null), 8), 3000);
+});
+
+test("network recovery backoff grows exponentially, jitters and remains bounded", () => {
+  assert.equal(mapUploadNetworkRetryDelay(1, () => 0), 100);
+  assert.equal(mapUploadNetworkRetryDelay(2, () => 0.5), 300);
+  assert.equal(mapUploadNetworkRetryDelay(20, () => 1), 3000);
+  assert.equal(mapUploadNetworkRetryDelay(3, () => -1), 400);
 });
 
 test("pause cancels a pending retry immediately", async () => {

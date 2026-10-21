@@ -7,12 +7,15 @@ import {
   inspectMapArchive, type MapArchiveInspection, type PackageManifest,
 } from "./mapArchiveInspection";
 import { MapPublishSession } from "./mapPublishSession";
-import { mapUploadRetryDelay, waitForMapUploadRetry } from "./mapUploadRetry";
+import {
+  mapUploadNetworkRetryDelay, mapUploadRetryDelay, waitForMapUploadRetry,
+} from "./mapUploadRetry";
 
 const MAX_PACKAGE_BYTES = 512 * 1024 * 1024;
 const HASH_BLOCK = 4 * 1024 * 1024;
 const MAX_CHUNK = 8 * 1024 * 1024;
 const MIN_CHUNK = 1 * 1024 * 1024;
+const MAX_NETWORK_RECOVERY_FAILURES = 5;
 
 export type Visibility = "Published" | "Unlisted" | "Draft";
 export type { PackageManifest } from "./mapArchiveInspection";
@@ -198,6 +201,49 @@ export async function publishMapPackage(args: {
   let maxChunk = Math.min(state.chunkBytes, MAX_CHUNK);
   let retry = 0;
   let refreshed = 0;
+  let networkRecoveryFailures = 0;
+
+  const pauseForNetworkRecovery = async () => {
+    networkRecoveryFailures++;
+    if (networkRecoveryFailures > MAX_NETWORK_RECOVERY_FAILURES) {
+      throw new Error("The connection failed repeatedly and upload progress could not be confirmed. Retry this map to resume safely.");
+    }
+    await waitForMapUploadRetry(
+      mapUploadNetworkRetryDelay(networkRecoveryFailures), signal);
+  };
+
+  const recoverUploadState = async (): Promise<UploadState> => {
+    while (true) {
+      if (signal.aborted) throw new DOMException("Upload paused.", "AbortError");
+      let current: Response;
+      try {
+        current = await api(ticket, "GET", "uploads/" + map.hash, undefined, signal);
+      } catch (error) {
+        if (signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+          throw error;
+        }
+        if (!(error instanceof TypeError)) throw error;
+        await pauseForNetworkRecovery();
+        continue;
+      }
+
+      if (current.status === 401 && refreshed++ < 2) {
+        const renewed = await mintCommunityCredential(client);
+        if (renewed.ownerId !== currentOwnerId) {
+          throw new Error(
+            "Your Hunter License changed during this upload. Restart the batch to use the new account.");
+        }
+        ticket = renewed.ticket;
+        continue;
+      }
+      await ensure(current);
+      const next = validState(await current.json() as UploadState, map);
+      if (next.offset < state.offset) {
+        throw new Error("The Community service returned an upload offset behind the last confirmed position.");
+      }
+      return next;
+    }
+  };
 
   while (!state.complete && state.offset < map.file.size) {
     if (signal.aborted) throw new DOMException("Upload paused.", "AbortError");
@@ -205,8 +251,25 @@ export async function publishMapPackage(args: {
     const chunk = map.file.slice(state.offset, nextEnd);
     progress({ phase: "uploading", done: state.offset, total: map.file.size,
       message: "Uploading verified map package…" });
-    response = await api(ticket, "PUT",
-      "uploads/" + map.hash + "?offset=" + state.offset, chunk, signal);
+    try {
+      response = await api(ticket, "PUT",
+        "uploads/" + map.hash + "?offset=" + state.offset, chunk, signal);
+    } catch (error) {
+      if (signal.aborted) throw new DOMException("Upload paused.", "AbortError");
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      if (!(error instanceof TypeError)) throw error;
+      const confirmedOffset = state.offset;
+      await pauseForNetworkRecovery();
+      state = await recoverUploadState();
+      maxChunk = Math.min(maxChunk, state.chunkBytes, MAX_CHUNK);
+      if (state.offset > confirmedOffset) {
+        networkRecoveryFailures = 0;
+        progress({ phase: "uploading", done: state.offset, total: map.file.size,
+          message: "Confirmed upload progress after reconnecting…" });
+      }
+      continue;
+    }
+    networkRecoveryFailures = 0;
 
     if (response.status === 413 && maxChunk > MIN_CHUNK) {
       maxChunk = Math.max(MIN_CHUNK, Math.floor(maxChunk / 2));

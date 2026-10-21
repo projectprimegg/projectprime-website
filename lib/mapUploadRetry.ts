@@ -1,4 +1,5 @@
 const MAX_RETRY_AFTER_MS = 30_000;
+const MAX_NETWORK_RETRY_DELAY_MS = 3_000;
 
 export function mapUploadRetryDelay(
   response: Pick<Response, "headers">,
@@ -17,6 +18,18 @@ export function mapUploadRetryDelay(
     }
   }
   return Math.min(3000, 200 * retry * retry);
+}
+
+export function mapUploadNetworkRetryDelay(
+  retry: number,
+  random: () => number = Math.random,
+): number {
+  const attempt = Math.max(1, Math.floor(retry));
+  const base = Math.min(MAX_NETWORK_RETRY_DELAY_MS,
+    200 * 2 ** Math.min(attempt - 1, 4));
+  const sample = random();
+  const jitter = Number.isFinite(sample) ? Math.min(1, Math.max(0, sample)) : 0.5;
+  return Math.floor(base * (0.5 + jitter * 0.5));
 }
 
 export function waitForMapUploadRetry(ms: number, signal: AbortSignal): Promise<void> {
