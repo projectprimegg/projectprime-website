@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { getMapUploadKind } from "../lib/mapUploadFormats.ts";
 import {
   MAX_PK3_SOURCE_BYTES, MAX_CONVERTED_PACKAGE_BYTES,
   PK3_UPLOAD_CHUNK_BYTES, pk3ConversionUrl, validPk3RoomName,
@@ -43,17 +44,35 @@ test("conversion API explicitly requires HTTPS except local development", () => 
   }
 });
 
-test("primary Maps uploader embeds PK3 beneath PPMAP without duplicating sign-in", () => {
+test("main upload picker classifies both formats without accepting disguised files", () => {
+  assert.equal(getMapUploadKind("arena.ppmap"), "ppmap");
+  assert.equal(getMapUploadKind("Arena.PPMAP"), "ppmap");
+  assert.equal(getMapUploadKind("q3dm17.pk3"), "pk3");
+  assert.equal(getMapUploadKind("Q3DM17.PK3"), "pk3");
+  assert.equal(getMapUploadKind("arena.pk3.exe"), null);
+  assert.equal(getMapUploadKind("arena.ppmap.zip"), null);
+  assert.equal(getMapUploadKind("arena.bsp"), null);
+  assert.equal(getMapUploadKind(""), null);
+});
+
+test("main Maps upload shows exactly one file chooser and routes to existing handlers", () => {
   const mainPage = readFileSync(new URL("../app/maps/upload/page.tsx", import.meta.url), "utf8");
-  const pk3 = readFileSync(new URL("../components/maps/Pk3Upload.tsx", import.meta.url), "utf8");
-  const ppmap = readFileSync(new URL("../components/maps/MapUpload.tsx", import.meta.url), "utf8");
+  const combined = readFileSync(new URL("../components/maps/MapUpload.tsx", import.meta.url), "utf8");
+  const dedicatedPk3 = readFileSync(new URL("../app/maps/upload/pk3/page.tsx", import.meta.url), "utf8");
 
   assert.match(mainPage, /<MapUpload\s*\/>/);
-  assert.match(mainPage, /<Pk3Upload\s+embedded\s*\/>/);
-  assert.ok(mainPage.indexOf("<MapUpload />") < mainPage.indexOf("<Pk3Upload embedded />"));
-  assert.match(mainPage, /href="#pk3-upload"/);
-  assert.match(ppmap, /id="ppmap-upload"/);
-  assert.match(pk3, /accept="\.pk3"/);
-  assert.match(pk3, /if \(!session\) return embedded/);
-  assert.match(pk3, /href=\{embedded \? "#ppmap-upload" : "\/maps\/upload"\}/);
+  assert.doesNotMatch(mainPage, /<Pk3Upload/);
+  assert.match(mainPage, /href="#map-upload"/);
+  assert.equal((combined.match(/type="file"/g) || []).length, 1);
+  assert.match(combined, /accept="\.ppmap,\.pk3"/);
+  assert.match(combined, /getMapUploadKind\(selected\.name\)/);
+  assert.match(combined, /inspectMapPackage\(selected,/);
+  assert.match(combined, /scanPk3Levels\(selected\)/);
+  assert.match(combined, /submitPk3Conversion\(/);
+  assert.match(combined, /retrieveConvertedMap\(/);
+  assert.match(combined, /publishMapPackage\(/);
+  assert.match(combined, /rightsConfirmed/);
+  assert.match(combined, /warningsReviewed/);
+  assert.match(combined, /!converterConfigured/);
+  assert.match(dedicatedPk3, /<Pk3Upload\s*\/>/);
 });
