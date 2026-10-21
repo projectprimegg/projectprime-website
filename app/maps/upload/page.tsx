@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { MapUpload } from "@/components/maps/MapUpload";
-import { Pk3Upload } from "@/components/maps/Pk3Upload";
 
 export const metadata = { title: "Publish Community Map" };
 
@@ -10,17 +9,14 @@ export default function UploadMapPage() {
       <section className="page-hero maps-hero">
         <span className="eyebrow">MAP CREATOR // PUBLISH</span>
         <h1>Share a battlefield.</h1>
-        <p>Upload directly to the Project Prime Community service. No new
-          game release is needed to distribute published maps.</p>
-        <p className="helper">Have a compiled Quake .pk3? Use the dedicated
-          conversion service to build a compatible Project Prime package.</p>
-        <Link href="#pk3-upload" className="button button-ghost">
-          Jump to .pk3 uploader ↓
+        <p>Upload a Project Prime .ppmap or Quake .pk3 using the same file picker.
+          PK3 archives are converted and verified before publishing to Community.</p>
+        <Link href="#map-upload" className="button button-ghost">
+          Upload .ppmap or .pk3 ↓
         </Link>
         <Link className="text-link" href="/maps">← Map Library</Link>
       </section>
       <MapUpload />
-      <Pk3Upload embedded />
     </main>
   );
 }
