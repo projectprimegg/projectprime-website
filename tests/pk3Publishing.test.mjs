@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { getMapUploadKind } from "../lib/mapUploadFormats.ts";
+import { getMapUploadKind, planMapBatch, MAX_BULK_MAPS } from "../lib/mapUploadFormats.ts";
 import {
   MAX_PK3_SOURCE_BYTES, MAX_CONVERTED_PACKAGE_BYTES,
   PK3_UPLOAD_CHUNK_BYTES, pk3ConversionUrl, validPk3RoomName,
@@ -96,25 +96,43 @@ test("main upload picker classifies both formats without accepting disguised fil
   assert.equal(getMapUploadKind(""), null);
 });
 
-test("main Maps upload shows exactly one file chooser and routes to existing handlers", () => {
+test("main Maps upload uses one multi-select picker and preserves both workflows", () => {
   const mainPage = readFileSync(new URL("../app/maps/upload/page.tsx", import.meta.url), "utf8");
-  const combined = readFileSync(new URL("../components/maps/MapUpload.tsx", import.meta.url), "utf8");
+  const wrapper = readFileSync(new URL("../components/maps/MapUpload.tsx", import.meta.url), "utf8");
+  const combined = readFileSync(new URL("../components/maps/BulkMapUpload.tsx", import.meta.url), "utf8");
   const dedicatedPk3 = readFileSync(new URL("../app/maps/upload/pk3/page.tsx", import.meta.url), "utf8");
 
   assert.match(mainPage, /<MapUpload\s*\/>/);
-  assert.doesNotMatch(mainPage, /<Pk3Upload/);
-  assert.match(mainPage, /href="#map-upload"/);
+  assert.match(wrapper, /BulkMapUpload as MapUpload/);
   assert.equal((combined.match(/type="file"/g) || []).length, 1);
-  assert.match(combined, /accept="\.ppmap,\.pk3"/);
-  assert.match(combined, /getMapUploadKind\(selected\.name\)/);
-  assert.match(combined, /inspectMapPackage\(selected,/);
-  assert.match(combined, /scanPk3Levels\(selected\)/);
+  assert.match(combined, /type="file" multiple accept="\.ppmap,\.pk3"/);
+  assert.match(combined, /planMapBatch\(/);
+  assert.match(combined, /inspectMapPackage\(/);
+  assert.match(combined, /scanPk3Levels\(/);
   assert.match(combined, /submitPk3Conversion\(/);
   assert.match(combined, /retrieveConvertedMap\(/);
   assert.match(combined, /publishMapPackage\(/);
-  assert.match(combined, /rightsConfirmed/);
   assert.match(combined, /warningsReviewed/);
-  assert.match(combined, /converter\.status !== "available"/);
+  assert.match(combined, /rightsConfirmed/);
   assert.match(combined, /usePk3ServiceAvailability/);
   assert.match(dedicatedPk3, /<Pk3Upload\s*\/>/);
+});
+
+test("bulk planner accepts mixed archives but rejects duplicates, oversize and nonmap files", () => {
+  const file = (name, size, lastModified = 1) => ({ name, size, lastModified });
+  const selected = planMapBatch([
+    file("arena.ppmap", 1024), file("q3dm17.pk3", 2048),
+    file("arena.ppmap", 1024), file("oversize.pk3", 128 * 1024 * 1024 + 1),
+    file("evil.pk3.exe", 100), file("empty.ppmap", 0),
+  ], []);
+  assert.deepEqual(selected.accepted.map(a => a.kind), ["ppmap", "pk3"]);
+  assert.equal(selected.rejected.length, 4);
+  assert.match(selected.rejected[0].reason, /already in the queue/);
+  assert.match(selected.rejected[1].reason, /128 MiB/);
+
+  const existing = Array.from({ length: MAX_BULK_MAPS - 1 },
+    (_, i) => file("map-" + i + ".ppmap", 100));
+  const full = planMapBatch([file("one.ppmap", 10), file("two.pk3", 10)], existing);
+  assert.equal(full.accepted.length, 1);
+  assert.match(full.rejected[0].reason, /batch is full/);
 });
