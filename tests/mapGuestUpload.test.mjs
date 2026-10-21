@@ -52,18 +52,20 @@ test("guest sign-in failures never fall back to an unowned map upload", async ()
   await assert.rejects(() => ensureMapUploadIdentity({ auth }, null), /Could not check your current session/);
 });
 
-test("both upload formats stay visible to signed-out guests without a public backend bypass", () => {
-  const upload = readFileSync(new URL("../components/maps/MapUpload.tsx", import.meta.url), "utf8");
+test("bulk guest uploads keep scoped ownership and do not bypass creator tickets", () => {
+  const entry = readFileSync(new URL("../components/maps/MapUpload.tsx", import.meta.url), "utf8");
+  const upload = readFileSync(new URL("../components/maps/BulkMapUpload.tsx", import.meta.url), "utf8");
   const account = readFileSync(new URL("../components/maps/MapAccount.tsx", import.meta.url), "utf8");
   const tickets = readFileSync(new URL("../app/api/maps/ticket/route.ts", import.meta.url), "utf8");
 
-  assert.doesNotMatch(upload, /if \(!session\) return <MapAccountPanel/);
-  assert.match(upload, /accept="\.ppmap,\.pk3"/);
-  assert.match(upload, /if \(!session\) \{\s*setPhase\("authenticating"\);\s*await ensureMapUploadIdentity/);
-  assert.match(upload, /setPhase\("authenticating"\)/);
-  assert.match(upload, /"Publish as Guest"/);
-  assert.match(upload, /"Convert PK3 as Guest"/);
+  assert.match(entry, /BulkMapUpload as MapUpload/);
+  assert.match(upload, /multiple accept="\.ppmap,\.pk3"/);
+  assert.match(upload, /await ensureMapUploadIdentity\(client, session\)/);
+  assert.match(upload, /"Publish \/ Convert as Guest"/);
   assert.match(upload, /client, visibility, notes/);
+  assert.match(upload, /item\.rightsConfirmed/);
+  assert.match(upload, /item\.warningsReviewed/);
+  assert.match(upload, /for \(const original of \[\.\.\.queueRef\.current\]\)/);
   assert.match(account, /Continue as Guest/);
   assert.doesNotMatch(account, /NEXT_PUBLIC_ENABLE_GUEST_PUBLISHING/);
   assert.match(tickets, /"authorization"/);
