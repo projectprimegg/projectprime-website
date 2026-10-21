@@ -46,9 +46,11 @@ localStorage by the uploader. Supabase manages its own browser auth session.
   can approve and publish the actual `.ppmap` archive.
 - The main `/maps/upload` chooser routes `.pk3` archives to the isolated
   converter; the original `/maps/upload/pk3` workflow remains accessible.
-  PK3 conversion is enabled **only after** the backend is deployed and
-  `NEXT_PUBLIC_PK3_CONVERSION_URL` is configured. `.ppmap` publishing remains
-  available even when the converter is offline, with its strict contract unchanged.
+  The website checks `/pk3/health` under the configured Community map
+  service host, or uses an explicit `NEXT_PUBLIC_PK3_CONVERSION_URL` override.
+  PK3 conversion is enabled **only after** the backend responds with its
+  `{"ok":true}` health JSON and the website origin passes CORS. `.ppmap`
+  publishing remains available even when the converter is offline.
 - Verify the map service has deployed approved CORS preflight support and a
   body limit compatible with browser chunks.
 - Validate the production Supabase sign-in redirect allowlist and public
