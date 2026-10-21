@@ -125,9 +125,18 @@ export function MapAccountPanel({
       ) : (
         <>
           <span className="mini-tag">HUNTER LICENSE // SUPABASE IDENTITY</span>
-          <h2>{isLicense ? "Access your Hunter License." : "Sign in to publish."}</h2>
-          <p>Use the identity linked to Project Prime in-game. If you are playing on a guest
-            License, secure it in the game first to keep your Hunter ID and career.</p>
+          <h2>{isLicense ? "Access your Hunter License." : "Publish with or without an account."}</h2>
+          {!isLicense && <div className="maps-auth-alternate">
+            <p>No Hunter License registration is necessary. Continue as a guest
+              to get a temporary browser-bound map ownership identity.
+              Signing out or clearing browser data can permanently lose access
+              to your drafts and revisions.</p>
+            <button className="button" type="button" disabled={busy}
+              onClick={guest}>Continue as Guest</button>
+          </div>}
+          <p>{isLicense
+            ? "Sign in with your Hunter License."
+            : "Already have a Hunter License? Sign in to keep map ownership across devices."}</p>
           <form onSubmit={sendEmail}>
             <label htmlFor="map-email">Email address</label>
             <div className="maps-auth-row">
@@ -160,15 +169,7 @@ export function MapAccountPanel({
             <button className="button button-ghost" type="button"
               disabled={busy} onClick={() => void oauth("discord")}>Discord</button>
           </div>
-          {process.env.NEXT_PUBLIC_ENABLE_GUEST_PUBLISHING === "1" && (
-            <div className="maps-auth-alternate">
-              <p>Guest publishing is enabled for this deployment. Guest ownership
-                can be lost when you clear your browser data.</p>
-              <button className="button button-ghost" disabled={busy} onClick={guest}>
-                Continue as Guest
-              </button>
-            </div>
-          )}
+
         </>
       )}
       {message && <p className="maps-success" role="status">{message}</p>}
