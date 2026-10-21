@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { MapAccountPanel, useMapAuth } from "@/components/maps/MapAccount";
+import { useMapAuth } from "@/components/maps/MapAccount";
+import { ensureMapUploadIdentity } from "@/lib/mapGuestUpload";
 import {
   inspectMapPackage, publishMapPackage, type InspectedMap,
   type Visibility, type TransferProgress,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/pk3Publishing";
 import { getMapUploadKind, type MapUploadKind } from "@/lib/mapUploadFormats";
 
-const ACTIVE_PHASES = ["inspecting", "scanning", "hashing", "starting",
+const ACTIVE_PHASES = ["inspecting", "scanning", "authenticating", "hashing", "starting",
   "uploading", "converting", "retrieving", "publishing"];
 
 function suggestedRoom(file: File): string {
@@ -111,7 +112,7 @@ export function MapUpload() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!session || busy || !canSubmit || phase === "complete") return;
+    if (busy || !canSubmit || phase === "complete") return;
 
     const operation = new AbortController();
     controller.current = operation;
@@ -120,6 +121,11 @@ export function MapUpload() {
       if (!operation.signal.aborted) { setProgress(update); setPhase(update.phase); }
     };
     try {
+      if (!session) {
+        setPhase("authenticating");
+        await ensureMapUploadIdentity(client, session);
+        if (operation.signal.aborted) return;
+      }
       if (kind === "ppmap" && map) {
         setPhase("starting");
         const published = await publishMapPackage({
@@ -180,7 +186,6 @@ export function MapUpload() {
   }
 
   if (loading) return <section className="panel maps-upload"><p>Checking Hunter License…</p></section>;
-  if (!session) return <MapAccountPanel />;
 
   return (
     <form id="map-upload" className="panel maps-upload" onSubmit={submit}>
@@ -188,6 +193,19 @@ export function MapUpload() {
       <h2>Upload a playable map.</h2>
       <p>Select a Project Prime package or a Quake arena. The format is detected
         automatically and the appropriate publishing workflow is used.</p>
+      {!session && <div className="maps-upload-guest" role="note">
+        <strong>No registration required.</strong>
+        <p>Choose your map below, then publish or convert as a guest. We'll create
+          a temporary browser-bound identity only when you submit, so your uploads
+          retain private ownership and the usual validation checks.</p>
+        <p>Guest ownership can be lost if you sign out or clear this browser's
+          data. <Link href="/maps/account">Sign in with a Hunter License</Link> first
+          if you want to manage your maps across devices.</p>
+      </div>}
+      {session?.user.is_anonymous && <p className="helper">
+        Publishing as a guest. Keep this browser's session to manage your maps;
+        signing out or clearing browser data may permanently lose access.
+      </p>}
 
       <label htmlFor="map-package">Map file (.ppmap up to 512 MiB or .pk3 up to 128 MiB)</label>
       <input id="map-package" type="file" accept=".ppmap,.pk3"
@@ -283,8 +301,8 @@ export function MapUpload() {
         <button type="submit" className="button"
           disabled={!canSubmit || busy || phase === "complete"}>
           {kind === "pk3"
-            ? job ? "Publish Converted Map" : "Convert PK3"
-            : "Publish Map"}
+            ? job ? "Publish Converted Map" : session ? "Convert PK3" : "Convert PK3 as Guest"
+            : session ? "Publish Map" : "Publish as Guest"}
         </button>
         {busy && <button type="button" className="button button-ghost"
           onClick={() => controller.current?.abort()}>Pause Transfer</button>}
