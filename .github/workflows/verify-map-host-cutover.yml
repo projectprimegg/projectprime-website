@@ -1,0 +1,32 @@
+name: Check new map hostname before cutover
+on:
+  push:
+    branches:
+      - feat/default-maps-projectprime-gg-20261021
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Map and PK3 HTTPS readiness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check hostname resolution
+        run: |
+          set -euo pipefail
+          getent ahostsv4 maps.projectprime.gg
+      - name: Verify map and PK3 endpoints before redirecting traffic
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 15 \
+            https://maps.projectprime.gg/health \
+            -o /tmp/community-health.json
+          curl --fail --silent --show-error --max-time 15 \
+            -H 'Origin: https://projectprime.gg' \
+            -D /tmp/pk3-headers.txt \
+            https://maps.projectprime.gg/pk3/health \
+            -o /tmp/pk3-health.json
+          node -e 'const fs = require("fs"); const p = JSON.parse(fs.readFileSync("/tmp/pk3-health.json","utf8")); if(p.ok !== true) process.exit(1);'
+          grep -qi '^access-control-allow-origin: https://projectprime.gg' /tmp/pk3-headers.txt
+          echo 'New Community and PK3 HTTPS endpoints are ready.'
