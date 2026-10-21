@@ -6,7 +6,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   communityApiUrl, isMapHash, isMapId,
   type MapPackage, type MapProject,
-} from "@/lib/communityMaps";
+} from "./communityMaps";
+import { MapPublishSession } from "./mapPublishSession";
+import { mapUploadRetryDelay, waitForMapUploadRetry } from "./mapUploadRetry";
 
 const MAX_PACKAGE_BYTES = 512 * 1024 * 1024;
 const HASH_BLOCK = 4 * 1024 * 1024;
@@ -104,9 +106,12 @@ export async function inspectMapPackage(
   return { file, manifest, hash };
 }
 
-export async function mintCommunityTicket(client: SupabaseClient): Promise<string> {
+async function mintCommunityCredential(client: SupabaseClient): Promise<{
+  ticket: string;
+  ownerId: string;
+}> {
   const { data, error } = await client.auth.getSession();
-  if (error || !data.session?.access_token) {
+  if (error || !data.session?.access_token || !data.session.user?.id) {
     throw new Error("Your Hunter License session expired. Sign in again.");
   }
   const response = await fetch("/api/maps/ticket", {
@@ -118,7 +123,11 @@ export async function mintCommunityTicket(client: SupabaseClient): Promise<strin
   if (!response.ok || !payload.ticket) {
     throw new Error(payload.error || "Could not obtain a Community upload ticket.");
   }
-  return payload.ticket;
+  return { ticket: payload.ticket, ownerId: data.session.user.id };
+}
+
+export async function mintCommunityTicket(client: SupabaseClient): Promise<string> {
+  return (await mintCommunityCredential(client)).ticket;
 }
 
 async function api(
@@ -170,13 +179,6 @@ export async function ownedMapProjects(
     typeof item.latestHash === "string");
 }
 
-function retryDelay(response: Response, retry: number): number {
-  const value = Number(response.headers.get("Retry-After"));
-  return Number.isFinite(value) && value > 0
-    ? Math.min(3000, value * 1000)
-    : Math.min(3000, 200 * retry * retry);
-}
-
 export async function publishMapPackage(args: {
   map: InspectedMap;
   client: SupabaseClient;
@@ -184,21 +186,31 @@ export async function publishMapPackage(args: {
   notes: string;
   signal: AbortSignal;
   progress: (value: TransferProgress) => void;
+  publishSession?: MapPublishSession;
 }): Promise<MapPackage> {
   const { map, client, visibility, signal, progress } = args;
   if (args.notes.length > 4000) throw new Error("Release notes are limited to 4,000 characters.");
-  let ticket = await mintCommunityTicket(client);
-  const mine = await ownedMapProjects(ticket, signal);
-  const existing = mine.find(project =>
-    project.mapId.toLowerCase() === map.manifest.mapId.toLowerCase());
+  const publishSession = args.publishSession ?? new MapPublishSession();
+  const credential = await mintCommunityCredential(client);
+  const currentOwnerId = credential.ownerId;
+  let ticket = credential.ticket;
+  const expectedParentHash = await publishSession.latestHashFor(
+    currentOwnerId,
+    map.manifest.mapId,
+    async () => {
+      const mine = await ownedMapProjects(ticket, signal);
+      return new Map(mine.map(project =>
+        [project.mapId.toLowerCase(), project.latestHash] as const));
+    },
+  );
 
   const start = {
     bytes: map.file.size,
     listed: visibility === "Published",
     draft: visibility === "Draft",
     mapId: map.manifest.mapId,
-    existingMap: Boolean(existing),
-    expectedParentHash: existing ? existing.latestHash : null,
+    existingMap: expectedParentHash !== null,
+    expectedParentHash,
     releaseNotes: args.notes.trim() || null,
     allowStaleParent: false,
   };
@@ -227,11 +239,16 @@ export async function publishMapPackage(args: {
       continue;
     }
     if (response.status === 401 && refreshed++ < 2) {
-      ticket = await mintCommunityTicket(client);
+      const renewed = await mintCommunityCredential(client);
+      if (renewed.ownerId !== currentOwnerId) {
+        throw new Error(
+          "Your Hunter License changed during this upload. Restart the batch to use the new account.");
+      }
+      ticket = renewed.ticket;
       continue;
     }
     if ((response.status === 429 || response.status === 503) && retry++ < 8) {
-      await new Promise(resolve => setTimeout(resolve, retryDelay(response, retry)));
+      await waitForMapUploadRetry(mapUploadRetryDelay(response, retry), signal);
       continue;
     }
     if (response.status === 409) {
@@ -260,7 +277,12 @@ export async function publishMapPackage(args: {
     response = await api(ticket, "POST", "uploads/" + map.hash + "/complete",
       undefined, signal);
     if (response.status === 401) {
-      ticket = await mintCommunityTicket(client);
+      const renewed = await mintCommunityCredential(client);
+      if (renewed.ownerId !== currentOwnerId) {
+        throw new Error(
+          "Your Hunter License changed during this upload. Restart the batch to use the new account.");
+      }
+      ticket = renewed.ticket;
       response = await api(ticket, "POST", "uploads/" + map.hash + "/complete",
         undefined, signal);
     }
@@ -275,5 +297,6 @@ export async function publishMapPackage(args: {
       published.mapId.toLowerCase() !== map.manifest.mapId.toLowerCase()) {
     throw new Error("Server publication returned a different immutable map identity.");
   }
+  publishSession.recordPublished(currentOwnerId, published.mapId, published.hash);
   return published;
 }

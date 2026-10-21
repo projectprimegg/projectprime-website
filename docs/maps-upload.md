@@ -12,11 +12,15 @@ maximum is 512 MiB.
    a substitute for server-side strict package validation.
 4. `/api/maps/ticket` mints a short-lived `ppm1` creator Bearer ticket.
 5. `GET /v2/maps?mine=true` finds the creator's known Map ID and latest
-   immutable revision. New publications pass `existingMap=false`; revision
-   uploads carry `existingMap=true` and `expectedParentHash`.
+   immutable revision. A bulk run reuses this catalog snapshot for the same
+   authenticated owner, updates it after each successful publication and
+   reloads it after a failed publication or owner change. Every file still
+   obtains its own short-lived ticket. New publications pass `existingMap=false`;
+   revision uploads carry `existingMap=true` and `expectedParentHash`.
 6. `POST /uploads/{sha}` reserves storage and returns the authoritative
    byte offset. The browser sends 8 MiB or smaller sequential PUT chunks,
-   adapts to 413, rechecks offset on 409 and retries 429/503.
+   adapts to 413, rechecks offset on 409 and retries 429/503 according to the
+   server's bounded `Retry-After` delay. Pausing cancels a pending retry wait.
 7. `POST /uploads/{sha}/complete` performs server-side package, identity,
    ownership and revision validation before publishing.
 8. Bulk runs process files **sequentially**, with per-file status and progress. A failed file does not abort the remaining queue. Interrupted `.ppmap` uploads resume through the server-verified byte offset, with no duplicate publication of completed files. `.pk3` conversion finishes in **review** state; press Publish remaining maps again after reviewing the conversion (and explicitly approving any warnings). Converter downtime does not block `.ppmap` uploads.

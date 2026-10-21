@@ -8,6 +8,7 @@ import {
   inspectMapPackage, publishMapPackage, type InspectedMap,
   type Visibility, type TransferProgress,
 } from "@/lib/mapPublishing";
+import { MapPublishSession } from "@/lib/mapPublishSession";
 import {
   MAX_PK3_SOURCE_BYTES, retrieveConvertedMap, scanPk3Levels,
   submitPk3Conversion, validPk3RoomName, type ConvertedPk3Job,
@@ -166,6 +167,21 @@ export function BulkMapUpload() {
     running.current = true;
     stopRequested.current = false;
     const operation = new AbortController();
+    const publishSession = new MapPublishSession();
+    const publishInspectedMap = async (
+      map: InspectedMap,
+      progress: (value: TransferProgress) => void,
+    ) => {
+      try {
+        return await publishMapPackage({
+          map, client, visibility, notes, signal: operation.signal,
+          progress, publishSession,
+        });
+      } catch (error) {
+        publishSession.invalidate();
+        throw error;
+      }
+    };
     controller.current = operation;
     setProcessing(true);
     setNotice("");
@@ -204,10 +220,7 @@ export function BulkMapUpload() {
             showProgress(original.id, operation.signal, value);
           patchItem(original.id, { status: "publishing", error: "", progress: null });
           if (item.kind === "ppmap" && item.map) {
-            const result = await publishMapPackage({
-              map: item.map, client, visibility, notes,
-              signal: operation.signal, progress,
-            });
+            const result = await publishInspectedMap(item.map, progress);
             if (operation.signal.aborted) break;
             patchItem(original.id, { status: "complete", publishedId: result.mapId, progress: null });
             finished++;
@@ -227,9 +240,7 @@ export function BulkMapUpload() {
               job: item.job, client, signal: operation.signal, progress,
             });
             if (operation.signal.aborted) break;
-            const result = await publishMapPackage({
-              map, client, visibility, notes, signal: operation.signal, progress,
-            });
+            const result = await publishInspectedMap(map, progress);
             if (operation.signal.aborted) break;
             patchItem(original.id, { status: "complete", publishedId: result.mapId, progress: null });
             finished++;

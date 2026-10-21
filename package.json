@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:maps": "node --experimental-strip-types --test tests/communityMaps.test.mjs tests/mapGuestUpload.test.mjs",
+    "test:maps": "node --experimental-strip-types --test tests/communityMaps.test.mjs tests/mapGuestUpload.test.mjs tests/mapPublishSession.test.mjs tests/mapPublishing.test.mjs tests/mapUploadRetry.test.mjs",
     "test:license": "node --experimental-strip-types --test tests/hunterLicense.test.mjs",
     "test:leaderboards": "node --experimental-strip-types --test tests/publicHunters.test.mjs",
     "test:auth": "node --experimental-strip-types --test tests/hunterAuthRedirect.test.mjs",
