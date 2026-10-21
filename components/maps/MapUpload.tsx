@@ -13,6 +13,7 @@ import {
   submitPk3Conversion, validPk3RoomName, type ConvertedPk3Job,
 } from "@/lib/pk3Publishing";
 import { getMapUploadKind, type MapUploadKind } from "@/lib/mapUploadFormats";
+import { usePk3ServiceAvailability } from "@/lib/usePk3ServiceAvailability";
 
 const ACTIVE_PHASES = ["inspecting", "scanning", "authenticating", "hashing", "starting",
   "uploading", "converting", "retrieving", "publishing"];
@@ -43,10 +44,11 @@ export function MapUpload() {
   const [notes, setNotes] = useState("");
   const [publishedId, setPublishedId] = useState<string | null>(null);
 
-  const converterConfigured = Boolean(process.env.NEXT_PUBLIC_PK3_CONVERSION_URL);
+  const converter = usePk3ServiceAvailability();
+  const converterAvailable = converter.status === "available";
   const busy = ACTIVE_PHASES.includes(phase);
   const canConvertPk3 = kind === "pk3" && source !== null && levels.length > 0 &&
-    Boolean(level) && validPk3RoomName(roomName) && rightsConfirmed && converterConfigured;
+    Boolean(level) && validPk3RoomName(roomName) && rightsConfirmed && converterAvailable;
   const canPublishPk3 = kind === "pk3" && job !== null &&
     (job.warnings.length === 0 || warningsReviewed);
   const canSubmit = kind === "ppmap" ? map !== null :
@@ -224,11 +226,15 @@ export function MapUpload() {
       </div>}
 
       {kind === "pk3" && <>
-        {!converterConfigured && <p className="maps-error" role="status">
-          PK3 conversion is not enabled on this deployment. The separate
-          Linux conversion service and NEXT_PUBLIC_PK3_CONVERSION_URL must be configured.
-          You can still import the archive in Project Prime Studio and publish its .ppmap.
-        </p>}
+        {converter.status !== "available" && <div className="maps-error" role="status">
+          <p>{converter.status === "checking"
+            ? "Checking the PK3 conversion service…"
+            : "The PK3 conversion service is unavailable or not configured on the map host. Uploads remain disabled until its /pk3/health endpoint responds. You can still import locally in Project Prime Studio and publish .ppmap."}</p>
+          {converter.status === "unavailable" && <button type="button"
+            className="button button-ghost" onClick={converter.retry}>
+            Check converter again
+          </button>}
+        </div>}
 
         {levels.length > 0 && !job && <>
           <label htmlFor="pk3-level">Compiled BSP level</label>

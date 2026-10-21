@@ -8,12 +8,21 @@ links. Selecting a PK3 never publishes it without a separate conversion and
 creator approval.
 
 It requires a separately deployed `tools/pk3-upload` service from
-AntiNotAnti/Project-Prime PRs PK3-01 and PK3-02. Set the Vercel public
-configuration `NEXT_PUBLIC_PK3_CONVERSION_URL` to the already-deployed
-and TLS-verified conversion API path, for example
-`https://maps.example.com/pk3/`. The configuration is intentionally
-**absent by default**. Until the service exists, the UI shows a clear
-not-enabled state and directs creators to local Studio import.
+AntiNotAnti/Project-Prime PRs PK3-01 and PK3-02. By default, the website
+looks for the converter under `/pk3/` on its existing
+`NEXT_PUBLIC_MAP_SERVICE_URL` origin (currently falling back to the same
+`https://maps.rebooty.xyz/` origin used by the Community catalog).
+You can override it with `NEXT_PUBLIC_PK3_CONVERSION_URL` set to the real
+HTTPS converter base path, e.g. `https://your-map-host.example/pk3/`.
+
+**Neither URL proves the service is running.** The browser issues a bounded
+`GET /pk3/health` request on first use and requires the isolated conversion
+service's `{"ok":true}` response, over a CORS-approved HTTPS endpoint,
+before allowing source uploads. If the service is absent, misrouted,
+unreachable, or denies CORS, the UI remains disabled with a retry action,
+while `.ppmap` publishing continues normally. Selecting a fallback URL never
+uploads PK3 bytes to the Community package API or publishes automatically.
+The website does not deploy the conversion sidecar or change VPS DNS/TLS.
 
 A creator signs into the same Hunter License account already used for
 Community `.ppmap` publishing. File ZIP metadata is scanned locally to

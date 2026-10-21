@@ -5,7 +5,7 @@ import { getMapUploadKind } from "../lib/mapUploadFormats.ts";
 import {
   MAX_PK3_SOURCE_BYTES, MAX_CONVERTED_PACKAGE_BYTES,
   PK3_UPLOAD_CHUNK_BYTES, pk3ConversionUrl, validPk3RoomName,
-  validPk3Level, validConversionJobId,
+  validPk3Level, validConversionJobId, isPk3ConverterReady,
 } from "../lib/pk3Contract.ts";
 
 test("website PK3 upload/worker limits match standalone service", () => {
@@ -25,19 +25,60 @@ test("map and BSP names reject paths, shell fragments and reserved Windows devic
   assert.equal(validConversionJobId("d4d3f188-b4b9-4f86-af38-d730822419ce"), true);
   assert.equal(validConversionJobId("pk3/../../../"), false);
 });
-test("conversion API explicitly requires HTTPS except local development", () => {
-  const previous = process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
+test("PK3 converter defaults to Community HTTPS host but supports explicit override", () => {
+  const beforePk3 = process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
+  const beforeMap = process.env.NEXT_PUBLIC_MAP_SERVICE_URL;
   try {
     delete process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
-    assert.equal(pk3ConversionUrl(), null);
-    process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = "https://maps.example.test/pk3/";
-    assert.equal(pk3ConversionUrl()?.pathname, "/pk3/");
+    delete process.env.NEXT_PUBLIC_MAP_SERVICE_URL;
+    assert.equal(pk3ConversionUrl().href, "https://maps.rebooty.xyz/pk3/");
+    process.env.NEXT_PUBLIC_MAP_SERVICE_URL = "https://maps.example.test/";
+    assert.equal(pk3ConversionUrl().href, "https://maps.example.test/pk3/");
+    process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = "https://converter.example.test/source/";
+    assert.equal(pk3ConversionUrl().href, "https://converter.example.test/source/");
     process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = "http://localhost:8094/";
-    assert.equal(pk3ConversionUrl()?.hostname, "localhost");
+    assert.equal(pk3ConversionUrl().hostname, "localhost");
     process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = "http://evil.example/";
     assert.throws(() => pk3ConversionUrl(), /HTTPS/);
     process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = "https://user:pass@evil.example/";
     assert.throws(() => pk3ConversionUrl(), /credentials/);
+    delete process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
+    process.env.NEXT_PUBLIC_MAP_SERVICE_URL = "http://insecure.example/";
+    assert.throws(() => pk3ConversionUrl(), /HTTPS/);
+  } finally {
+    if (beforePk3 == null) delete process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
+    else process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = beforePk3;
+    if (beforeMap == null) delete process.env.NEXT_PUBLIC_MAP_SERVICE_URL;
+    else process.env.NEXT_PUBLIC_MAP_SERVICE_URL = beforeMap;
+  }
+});
+
+test("PK3 source upload requires the converter's specific healthy response", async () => {
+  const previous = process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
+  process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = "https://converter.example.test/pk3/";
+  try {
+  let checked = "";
+  const success = await isPk3ConverterReady(async (input, options) => {
+    checked = String(input);
+    assert.equal(options.method, "GET");
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.redirect, "error");
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  });
+  assert.equal(success, true);
+  assert.equal(new URL(checked).pathname.endsWith("/pk3/health"), true);
+
+  assert.equal(await isPk3ConverterReady(async () =>
+    new Response(JSON.stringify({ status: "ok" }), { status: 200 })), false);
+  assert.equal(await isPk3ConverterReady(async () =>
+    new Response("Not Found", { status: 404 })), false);
+  assert.equal(await isPk3ConverterReady(async () =>
+    new Response("<html>proxy fallback</html>", { status: 200 })), false);
+  assert.equal(await isPk3ConverterReady(async () => {
+    throw new TypeError("CORS blocked or endpoint offline");
+  }), false);
   } finally {
     if (previous == null) delete process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
     else process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = previous;
@@ -73,6 +114,7 @@ test("main Maps upload shows exactly one file chooser and routes to existing han
   assert.match(combined, /publishMapPackage\(/);
   assert.match(combined, /rightsConfirmed/);
   assert.match(combined, /warningsReviewed/);
-  assert.match(combined, /!converterConfigured/);
+  assert.match(combined, /converter\.status !== "available"/);
+  assert.match(combined, /usePk3ServiceAvailability/);
   assert.match(dedicatedPk3, /<Pk3Upload\s*\/>/);
 });

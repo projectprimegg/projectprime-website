@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { MapAccountPanel, useMapAuth } from "@/components/maps/MapAccount";
+import { usePk3ServiceAvailability } from "@/lib/usePk3ServiceAvailability";
 import {
   publishMapPackage, type TransferProgress, type Visibility,
 } from "@/lib/mapPublishing";
@@ -35,7 +36,8 @@ export function Pk3Upload({ embedded = false }: { embedded?: boolean } = {}) {
   const [publishedId, setPublishedId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
-  const online = Boolean(process.env.NEXT_PUBLIC_PK3_CONVERSION_URL);
+  const converter = usePk3ServiceAvailability();
+  const online = converter.status === "available";
   useEffect(() => () => controller.current?.abort(), []);
   const busy = ["scanning", "starting", "hashing", "uploading", "converting",
     "retrieving", "inspecting", "publishing"].includes(phase);
@@ -65,7 +67,7 @@ export function Pk3Upload({ embedded = false }: { embedded?: boolean } = {}) {
 
   async function onConvert(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || !session || busy || !rights ||
+    if (!file || !session || busy || !online || !rights ||
         !validPk3RoomName(roomName) || !level) return;
     const signal = new AbortController();
     controller.current = signal;
@@ -146,8 +148,13 @@ export function Pk3Upload({ embedded = false }: { embedded?: boolean } = {}) {
         You review its warnings before publishing to the game.</p>
 
       {!online && <div className="maps-error" role="status">
-        Website conversion is not enabled on this deployment yet. You can
-        still import .pk3 locally in Project Prime Studio and publish .ppmap.
+        <p>{converter.status === "checking"
+          ? "Checking the PK3 conversion service…"
+          : "The PK3 conversion service is unavailable or not configured on the map host. You can import locally in Project Prime Studio and publish .ppmap."}</p>
+        {converter.status === "unavailable" && <button type="button"
+          className="button button-ghost" onClick={converter.retry}>
+          Check converter again
+        </button>}
       </div>}
 
       <form onSubmit={onConvert}>
