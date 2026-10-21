@@ -24,7 +24,7 @@ maximum is 512 MiB.
 
 Unlisted maps are hidden from normal discovery but can remain accessible to anyone who has an exact package hash/link; use Draft for private work.
 
-Guest maps are owned by the browser's temporary Supabase identity, not by a public uploader. Guest authors can manage revisions while the browser session remains intact. Signing out, clearing site data or switching devices can permanently lose map ownership. Sign in or link the guest account for recoverable ownership.\n\nA paused/failed upload can be resumed by choosing the **same file** and
+Guest maps are owned by the browser's temporary Supabase identity, not by a public uploader. Guest authors can manage revisions while the browser session remains intact. Signing out, clearing site data or switching devices can permanently lose map ownership. For recoverable ownership, link that guest identity to a verified login before losing its session; signing into a different account does not transfer the maps.\n\nA paused/failed upload can be resumed by choosing the **same file** and
 submitting it again. Server partials expire under existing retention policy.
 File bytes and creator tokens are never stored in website databases or
 localStorage by the uploader. Supabase manages its own browser auth session.
@@ -35,8 +35,9 @@ localStorage by the uploader. Supabase manages its own browser auth session.
   anonymous identity only on explicit submission, then the existing scoped
   `ppm1` ticket and server-side ownership, quotas and ZIP checks apply.
 - Disposable guest identities can evade per-creator quotas. Operators should
-  configure Supabase anonymous sign-in rate limits and CAPTCHA/Turnstile,
-  network-edge upload throttling, and Community moderation. Never expose
+  keep Supabase anonymous sign-in rate limits enabled and use network-edge
+  upload throttling and Community moderation. Add a CAPTCHA token flow to
+  guest sign-in before enabling CAPTCHA/Turnstile in Supabase. Never expose
   a master publisher token to browser clients.
 
 
