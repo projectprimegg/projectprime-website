@@ -6,7 +6,7 @@ Community service, **never through a Vercel function**, because their supported
 maximum is 512 MiB.
 
 1. Open `/maps/upload` without creating an account. Signed-in Hunters publish under their existing identity. Guests can select and inspect either file type immediately; clicking **Publish as Guest** or **Convert PK3 as Guest** creates a temporary Supabase anonymous session without an email or password.
-2. Select a `.ppmap` or `.pk3` in the single file chooser on `/maps/upload`. The website recognizes the extension and validates the archive before proceeding. Quake `.pk3` files use the isolated converter and require explicit rights confirmation, BSP selection, and converted-map review. `.ppmap` files follow the existing direct Community upload flow.
+2. Select up to **30** mixed `.ppmap` and `.pk3` files in the same multi-select picker. You can add more selections until the queue is full, remove individual files and clear completed uploads. The website detects the extension and validates each archive independently. Invalid and oversized selections are rejected without blocking the valid files. Quake `.pk3` files use the isolated converter and require **per-map** rights confirmation, BSP selection, and converted-map review. `.ppmap` files use the direct Community upload flow.
 3. The browser reads only the bounded ZIP manifest and incrementally hashes
    the archive in 4 MiB blocks. This is display/identity preflight, **not**
    a substitute for server-side strict package validation.
@@ -19,13 +19,13 @@ maximum is 512 MiB.
    adapts to 413, rechecks offset on 409 and retries 429/503.
 7. `POST /uploads/{sha}/complete` performs server-side package, identity,
    ownership and revision validation before publishing.
-8. The website links to the stable `/maps/{MapId}` detail page. Game clients
+8. Bulk runs process files **sequentially**, with per-file status and progress. A failed file does not abort the remaining queue. Interrupted `.ppmap` uploads resume through the server-verified byte offset, with no duplicate publication of completed files. `.pk3` conversion finishes in **review** state; press Publish remaining maps again after reviewing the conversion (and explicitly approving any warnings). Converter downtime does not block `.ppmap` uploads.
+9. Each completed file links to its stable `/maps/{MapId}` detail page. Game clients
    continue to verify the exact package identity independently.
 
 Unlisted maps are hidden from normal discovery but can remain accessible to anyone who has an exact package hash/link; use Draft for private work.
 
-Guest maps are owned by the browser's temporary Supabase identity, not by a public uploader. Guest authors can manage revisions while the browser session remains intact. Signing out, clearing site data or switching devices can permanently lose map ownership. For recoverable ownership, link that guest identity to a verified login before losing its session; signing into a different account does not transfer the maps.\n\nA paused/failed upload can be resumed by choosing the **same file** and
-submitting it again. Server partials expire under existing retention policy.
+Guest maps are owned by the browser's temporary Supabase identity, not by a public uploader. Guest authors can manage revisions while the browser session remains intact. Signing out, clearing site data or switching devices can permanently lose map ownership. For recoverable ownership, link that guest identity to a verified login before losing its session; signing into a different account does not transfer the maps.\n\nA paused/failed upload can be resumed directly from the batch queue by pressing **Publish remaining maps**. Re-selecting the same file is only needed after it has been removed or the page is reloaded. Server partials expire under existing retention policy.
 File bytes and creator tokens are never stored in website databases or
 localStorage by the uploader. Supabase manages its own browser auth session.
 
@@ -55,3 +55,7 @@ localStorage by the uploader. Supabase manages its own browser auth session.
   body limit compatible with browser chunks.
 - Validate the production Supabase sign-in redirect allowlist and public
   project credentials before enabling website publishing in production.
+
+## Bulk upload limitations
+
+The queue lives in browser memory; reloading the page clears unpublished queue entries. A browser-bound guest identity still owns uploads independently. Visibility and release notes are shared across the current batch. Each PK3 archive converts one selected BSP level; uploading several PK3 archives is supported, but a single archive with multiple levels currently needs one conversion per selected level through the dedicated workflow. Individual file limits (512 MiB .ppmap, 128 MiB .pk3) and all backend quotas remain enforced.
