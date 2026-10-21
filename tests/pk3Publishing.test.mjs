@@ -54,6 +54,9 @@ test("PK3 converter defaults to Community HTTPS host but supports explicit overr
 });
 
 test("PK3 source upload requires the converter's specific healthy response", async () => {
+  const previous = process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
+  process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = "https://converter.example.test/pk3/";
+  try {
   let checked = "";
   const success = await isPk3ConverterReady(async (input, options) => {
     checked = String(input);
@@ -76,6 +79,10 @@ test("PK3 source upload requires the converter's specific healthy response", asy
   assert.equal(await isPk3ConverterReady(async () => {
     throw new TypeError("CORS blocked or endpoint offline");
   }), false);
+  } finally {
+    if (previous == null) delete process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
+    else process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = previous;
+  }
 });
 
 test("main upload picker classifies both formats without accepting disguised files", () => {
