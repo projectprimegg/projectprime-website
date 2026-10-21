@@ -20,9 +20,11 @@ standalone PK3 pages also offer **Continue as Guest**. The previous
 `NEXT_PUBLIC_ENABLE_GUEST_PUBLISHING` UI flag is no longer needed.
 
 **Security:** Disposable anonymous identities can circumvent per-creator quotas.
-Keep Supabase anonymous signup rate limits enabled. Configure CAPTCHA/Turnstile
-and reverse-proxy/WAF upload throttles, plus moderation and storage quotas,
-before broad public rollout. Never put service-role keys in browser code.
+Keep Supabase anonymous signup rate limits enabled, and configure
+reverse-proxy/WAF upload throttles, moderation and storage quotas. A future
+CAPTCHA/Turnstile deployment must pass a provider token to Supabase anonymous
+sign-in first; simply requiring CAPTCHA in Auth without a browser token
+will block guest uploads. Never put service-role keys in browser code.
 
 Supabase **Auth > URL Configuration** must set the **Site URL** to
 `https://projectprime.gg` (not localhost), and allow the exact redirects
