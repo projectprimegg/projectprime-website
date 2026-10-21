@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   MAX_PK3_SOURCE_BYTES, MAX_CONVERTED_PACKAGE_BYTES,
   PK3_UPLOAD_CHUNK_BYTES, pk3ConversionUrl, validPk3RoomName,
@@ -40,4 +41,19 @@ test("conversion API explicitly requires HTTPS except local development", () => 
     if (previous == null) delete process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
     else process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = previous;
   }
+});
+
+test("primary Maps uploader embeds PK3 beneath PPMAP without duplicating sign-in", () => {
+  const mainPage = readFileSync(new URL("../app/maps/upload/page.tsx", import.meta.url), "utf8");
+  const pk3 = readFileSync(new URL("../components/maps/Pk3Upload.tsx", import.meta.url), "utf8");
+  const ppmap = readFileSync(new URL("../components/maps/MapUpload.tsx", import.meta.url), "utf8");
+
+  assert.match(mainPage, /<MapUpload\s*\/>/);
+  assert.match(mainPage, /<Pk3Upload\s+embedded\s*\/>/);
+  assert.ok(mainPage.indexOf("<MapUpload />") < mainPage.indexOf("<Pk3Upload embedded />"));
+  assert.match(mainPage, /href="#pk3-upload"/);
+  assert.match(ppmap, /id="ppmap-upload"/);
+  assert.match(pk3, /accept="\.pk3"/);
+  assert.match(pk3, /if \(!session\) return embedded/);
+  assert.match(pk3, /href=\{embedded \? "#ppmap-upload" : "\/maps\/upload"\}/);
 });
