@@ -11,7 +11,7 @@ It requires a separately deployed `tools/pk3-upload` service from
 AntiNotAnti/Project-Prime PRs PK3-01 and PK3-02. By default, the website
 looks for the converter under `/pk3/` on its existing
 `NEXT_PUBLIC_MAP_SERVICE_URL` origin (currently falling back to the same
-`https://maps.rebooty.xyz/` origin used by the Community catalog).
+`https://maps.projectprime.gg/` origin used by the Community catalog).
 You can override it with `NEXT_PUBLIC_PK3_CONVERSION_URL` set to the real
 HTTPS converter base path, e.g. `https://your-map-host.example/pk3/`.
 
