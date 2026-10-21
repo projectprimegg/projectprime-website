@@ -17,6 +17,19 @@ test("map identities are strict and unsuitable for URL path injection", () => {
   assert.equal(isMapHash(validHash + "/../"), false);
 });
 
+test("Community fallback uses the new map service without overriding Vercel settings", () => {
+  const saved = process.env.NEXT_PUBLIC_MAP_SERVICE_URL;
+  try {
+    delete process.env.NEXT_PUBLIC_MAP_SERVICE_URL;
+    assert.equal(communityServiceUrl().href, "https://maps.projectprime.gg/");
+    process.env.NEXT_PUBLIC_MAP_SERVICE_URL = "https://maps.example.org/";
+    assert.equal(communityServiceUrl().href, "https://maps.example.org/");
+  } finally {
+    if (saved === undefined) delete process.env.NEXT_PUBLIC_MAP_SERVICE_URL;
+    else process.env.NEXT_PUBLIC_MAP_SERVICE_URL = saved;
+  }
+});
+
 test("map service accepts HTTPS and localhost but not credentialed or remote HTTP URLs", () => {
   const saved = process.env.NEXT_PUBLIC_MAP_SERVICE_URL;
   try {
