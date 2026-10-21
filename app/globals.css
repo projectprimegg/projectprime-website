@@ -461,3 +461,37 @@ a { color: inherit; text-decoration: none; }
 .pk3-warning li { margin: 8px 0; color: var(--muted); }
 .pk3-upload .hero-actions { gap: 12px; }
 .pk3-upload .maps-transfer { margin-top: 25px; }
+
+
+/* Mixed-format Community bulk publishing. Each file remains independently
+   inspectable and retryable without nesting forms or creating scroll traps. */
+.maps-bulk-summary {
+  display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center;
+  border-top:1px solid var(--line); padding:16px 0; margin-top:20px;
+}
+.maps-bulk-summary strong { color:var(--cyan-2); }
+.maps-bulk-summary span { color:var(--muted); }
+.maps-bulk-summary .button { margin-left:auto; }
+.maps-bulk-list { display:grid; gap:14px; margin:14px 0 28px; }
+.maps-bulk-item {
+  padding:18px; min-width:0; border:1px solid var(--line);
+  background:rgba(85,216,255,.025); overflow-wrap:anywhere;
+}
+.maps-bulk-heading {
+  display:flex; flex-wrap:wrap; gap:8px 20px; align-items:baseline;
+  justify-content:space-between;
+}
+.maps-bulk-heading strong { display:block; font-size:1.05rem; }
+.maps-bulk-heading small { display:block; margin-top:5px; color:var(--muted); }
+.maps-bulk-heading > span { color:var(--cyan-2); font-size:.82rem; }
+.maps-bulk-item .pk3-job-review { padding:12px 0; }
+.maps-bulk-item .maps-transfer { margin:14px 0; }
+.maps-bulk-item .maps-transfer progress { min-width:120px; }
+.maps-bulk-item .pk3-legal input[type="checkbox"] {
+  flex:0 0 auto; width:auto; min-height:auto; margin-top:4px;
+}
+.maps-bulk-item .button-ghost { margin-top:12px; }
+@media (max-width:640px) {
+  .maps-bulk-summary .button { margin-left:0; }
+  .maps-bulk-item { padding:14px; }
+}
