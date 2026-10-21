@@ -7,65 +7,174 @@ import {
   inspectMapPackage, publishMapPackage, type InspectedMap,
   type Visibility, type TransferProgress,
 } from "@/lib/mapPublishing";
+import {
+  MAX_PK3_SOURCE_BYTES, retrieveConvertedMap, scanPk3Levels,
+  submitPk3Conversion, validPk3RoomName, type ConvertedPk3Job,
+} from "@/lib/pk3Publishing";
+import { getMapUploadKind, type MapUploadKind } from "@/lib/mapUploadFormats";
+
+const ACTIVE_PHASES = ["inspecting", "scanning", "hashing", "starting",
+  "uploading", "converting", "retrieving", "publishing"];
+
+function suggestedRoom(file: File): string {
+  const name = file.name.replace(/\.pk3$/i, "").toUpperCase()
+    .replace(/[^A-Z0-9 _-]/g, "_").replace(/^[_ -]+/, "");
+  return "Q3_" + (name || "CUSTOM").slice(0, 36);
+}
 
 export function MapUpload() {
   const { client, session, loading } = useMapAuth();
   const controller = useRef<AbortController | null>(null);
+  const [source, setSource] = useState<File | null>(null);
+  const [kind, setKind] = useState<MapUploadKind | null>(null);
   const [map, setMap] = useState<InspectedMap | null>(null);
+  const [levels, setLevels] = useState<string[]>([]);
+  const [level, setLevel] = useState("");
+  const [roomName, setRoomName] = useState("");
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [job, setJob] = useState<ConvertedPk3Job | null>(null);
+  const [warningsReviewed, setWarningsReviewed] = useState(false);
   const [phase, setPhase] = useState("idle");
   const [notice, setNotice] = useState("");
+  const [noticeIsError, setNoticeIsError] = useState(false);
   const [progress, setProgress] = useState<TransferProgress | null>(null);
   const [visibility, setVisibility] = useState<Visibility>("Published");
   const [notes, setNotes] = useState("");
   const [publishedId, setPublishedId] = useState<string | null>(null);
 
+  const converterConfigured = Boolean(process.env.NEXT_PUBLIC_PK3_CONVERSION_URL);
+  const busy = ACTIVE_PHASES.includes(phase);
+  const canConvertPk3 = kind === "pk3" && source !== null && levels.length > 0 &&
+    Boolean(level) && validPk3RoomName(roomName) && rightsConfirmed && converterConfigured;
+  const canPublishPk3 = kind === "pk3" && job !== null &&
+    (job.warnings.length === 0 || warningsReviewed);
+  const canSubmit = kind === "ppmap" ? map !== null :
+    job ? canPublishPk3 : canConvertPk3;
+  const percent = progress?.total
+    ? Math.max(0, Math.min(100, Math.floor(progress.done * 100 / progress.total))) : 0;
+
   useEffect(() => () => controller.current?.abort(), []);
-  const active = ["inspecting", "hashing", "starting", "uploading", "publishing"]
-    .includes(phase);
 
   async function selectFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file || active) return;
+    const selected = event.currentTarget.files?.[0];
+    if (!selected || busy) return;
+    // Allow the same file to be chosen again after a failed preflight.
+    event.currentTarget.value = "";
     controller.current?.abort();
-    const abort = new AbortController();
-    controller.current = abort;
-    setMap(null); setPublishedId(null); setNotice("");
-    setPhase("inspecting");
+    const operation = new AbortController();
+    controller.current = operation;
+    setSource(null); setKind(null); setMap(null); setJob(null);
+    setLevels([]); setLevel(""); setRoomName("");
+    setRightsConfirmed(false); setWarningsReviewed(false);
+    setPublishedId(null); setProgress(null); setNotice("");
+    setNoticeIsError(false); setVisibility("Published"); setNotes("");
+
+    const detected = getMapUploadKind(selected.name);
+    if (!detected) {
+      setPhase("error");
+      setNoticeIsError(true);
+      setNotice("Choose a Project Prime .ppmap or Quake .pk3 archive.");
+      return;
+    }
+    setSource(selected);
+    setKind(detected);
     try {
-      const result = await inspectMapPackage(file, abort.signal, update => {
-        setProgress(update); setPhase(update.phase);
-      });
-      if (!abort.signal.aborted) { setMap(result); setPhase("ready"); }
+      if (detected === "ppmap") {
+        setPhase("inspecting");
+        const inspected = await inspectMapPackage(selected, operation.signal, update => {
+          if (!operation.signal.aborted) { setProgress(update); setPhase(update.phase); }
+        });
+        if (operation.signal.aborted) return;
+        setMap(inspected);
+      } else {
+        setPhase("scanning");
+        if (!selected.size || selected.size > MAX_PK3_SOURCE_BYTES)
+          throw new Error("Quake .pk3 archives must be between 1 byte and 128 MiB.");
+        const found = await scanPk3Levels(selected);
+        if (operation.signal.aborted) return;
+        setLevels(found);
+        setLevel(found[0]);
+        setRoomName(suggestedRoom(selected));
+      }
+      setPhase("ready");
     } catch (error) {
-      if (abort.signal.aborted) setPhase("paused");
-      else { setPhase("error"); setNotice(error instanceof Error ? error.message :
-        "Could not inspect this package."); }
+      if (operation.signal.aborted) {
+        setPhase("paused");
+        setNotice("Inspection paused. Choose the same file to restart.");
+      } else {
+        setPhase("error");
+        setNoticeIsError(true);
+        setNotice(error instanceof Error ? error.message : "Unable to inspect this map.");
+      }
     }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!map || !session || active) return;
-    const abort = new AbortController();
-    controller.current = abort;
-    setNotice(""); setPublishedId(null); setPhase("starting");
+    if (!session || busy || !canSubmit || phase === "complete") return;
+
+    const operation = new AbortController();
+    controller.current = operation;
+    setNotice(""); setNoticeIsError(false); setPublishedId(null); setProgress(null);
+    const showProgress = (update: TransferProgress) => {
+      if (!operation.signal.aborted) { setProgress(update); setPhase(update.phase); }
+    };
     try {
-      const result = await publishMapPackage({
-        map, client, visibility, notes, signal: abort.signal,
-        progress: update => { setProgress(update); setPhase(update.phase); },
-      });
-      if (!abort.signal.aborted) {
-        setPhase("complete");
-        setPublishedId(result.mapId);
-        setNotice("Your map is published. It is now available to the Community catalog.");
+      if (kind === "ppmap" && map) {
+        setPhase("starting");
+        const published = await publishMapPackage({
+          map, client, visibility, notes, signal: operation.signal,
+          progress: showProgress,
+        });
+        if (!operation.signal.aborted) {
+          setPhase("complete");
+          setPublishedId(published.mapId);
+          setNotice("Your map is published in the Community catalog.");
+        }
+      } else if (kind === "pk3" && source) {
+        if (!job) {
+          setPhase("starting");
+          const converted = await submitPk3Conversion({
+            file: source, roomName, levelName: level,
+            rightsConfirmed, client, signal: operation.signal,
+            progress: showProgress,
+          });
+          if (!operation.signal.aborted) {
+            setJob(converted);
+            setPhase("review");
+            setNotice(converted.warnings.length
+              ? "Conversion succeeded with warnings. Review them before publishing."
+              : "Conversion verified. Review and publish when ready.");
+          }
+        } else {
+          setPhase("retrieving");
+          const convertedMap = await retrieveConvertedMap({
+            job, client, signal: operation.signal, progress: showProgress,
+          });
+          if (operation.signal.aborted) return;
+          setPhase("publishing");
+          const published = await publishMapPackage({
+            map: convertedMap, client, visibility, notes,
+            signal: operation.signal, progress: showProgress,
+          });
+          if (!operation.signal.aborted) {
+            setPhase("complete");
+            setPublishedId(published.mapId);
+            setNotice("Converted map published through the Community catalog.");
+          }
+        }
       }
     } catch (error) {
-      if (abort.signal.aborted) {
-        setPhase("paused");
-        setNotice("Transfer paused. Choose Publish again with the same file to resume.");
+      if (operation.signal.aborted) {
+        setPhase(job ? "review" : "paused");
+        setNotice(job
+          ? "Publication paused. The converted package is retained for retry."
+          : "Transfer paused. Use the button again to resume.");
       } else {
-        setPhase("error");
-        setNotice(error instanceof Error ? error.message : "Map publication failed.");
+        // A converted PK3 remains available for another publishing attempt.
+        setPhase(kind === "pk3" && job ? "review" : "error");
+        setNoticeIsError(true);
+        setNotice(error instanceof Error ? error.message : "Map upload failed.");
       }
     }
   }
@@ -73,65 +182,123 @@ export function MapUpload() {
   if (loading) return <section className="panel maps-upload"><p>Checking Hunter License…</p></section>;
   if (!session) return <MapAccountPanel />;
 
-  const percentage = progress?.total
-    ? Math.max(0, Math.min(100, Math.floor(progress.done * 100 / progress.total))) : 0;
-
   return (
-    <form id="ppmap-upload" className="panel maps-upload" onSubmit={submit}>
+    <form id="map-upload" className="panel maps-upload" onSubmit={submit}>
       <span className="mini-tag">WEBSITE TO GAME // CREATOR PIPELINE</span>
       <h2>Upload a playable map.</h2>
-      <p>Export a .ppmap from Project Prime Studio. The server verifies its
-        contents and publishes the exact immutable archive used by players.</p>
+      <p>Select a Project Prime package or a Quake arena. The format is detected
+        automatically and the appropriate publishing workflow is used.</p>
 
-      <label htmlFor="map-package">Map package (.ppmap, maximum 512 MiB)</label>
-      <input id="map-package" type="file" accept=".ppmap" disabled={active}
-        onChange={selectFile} required={!map} />
+      <label htmlFor="map-package">Map file (.ppmap up to 512 MiB or .pk3 up to 128 MiB)</label>
+      <input id="map-package" type="file" accept=".ppmap,.pk3"
+        disabled={busy} onChange={selectFile} required={!source} />
 
-      {map && <div className="maps-upload-inspection">
-        <h3>{map.manifest.displayName || map.manifest.name}</h3>
-        <p>Runtime name: {map.manifest.name}</p>
-        <p>Map ID: {map.manifest.mapId}</p>
-        <p>Version: {map.manifest.mapVersion || "Unspecified"}</p>
-        <p>SHA-256: <code>{map.hash}</code></p>
+      {source && kind && <div className="maps-upload-inspection" aria-live="polite">
+        <span className="mini-tag">{kind === "pk3" ? "QUAKE PK3 // CONVERSION" : "PROJECT PRIME // PUBLISH"}</span>
+        <h3>{source.name}</h3>
+        <p>Detected format: <strong>{kind === "pk3" ? "Quake .pk3" : "Project Prime .ppmap"}</strong></p>
+        {kind === "ppmap" && map && <>
+          <p>Runtime name: {map.manifest.name}</p>
+          <p>Map ID: {map.manifest.mapId}</p>
+          <p>Version: {map.manifest.mapVersion || "Unspecified"}</p>
+          <p>SHA-256: <code>{map.hash}</code></p>
+        </>}
       </div>}
 
-      <label htmlFor="map-visibility">Publish visibility</label>
-      <select id="map-visibility" value={visibility} disabled={active}
-        onChange={event => setVisibility(event.target.value as Visibility)}>
-        <option value="Published">Published: searchable in-game and on the website</option>
-        <option value="Unlisted">Unlisted: hidden from discovery, shareable by exact link</option>
-        <option value="Draft">Draft: private to your Hunter License</option>
-      </select>
+      {kind === "pk3" && <>
+        {!converterConfigured && <p className="maps-error" role="status">
+          PK3 conversion is not enabled on this deployment. The separate
+          Linux conversion service and NEXT_PUBLIC_PK3_CONVERSION_URL must be configured.
+          You can still import the archive in Project Prime Studio and publish its .ppmap.
+        </p>}
 
-      <label htmlFor="map-notes">Release notes (optional)</label>
-      <textarea id="map-notes" maxLength={4000} rows={4} value={notes}
-        disabled={active} onChange={event => setNotes(event.target.value)}
-        placeholder="What changed in this revision?" />
+        {levels.length > 0 && !job && <>
+          <label htmlFor="pk3-level">Compiled BSP level</label>
+          <select id="pk3-level" value={level} disabled={busy}
+            onChange={event => setLevel(event.target.value)}>
+            {levels.map(name => <option value={name} key={name}>{name}</option>)}
+          </select>
 
-      {progress && <div className="maps-transfer">
+          <label htmlFor="pk3-room">Project Prime map name</label>
+          <input id="pk3-room" type="text" required maxLength={40}
+            value={roomName} disabled={busy}
+            onChange={event => setRoomName(event.target.value)} />
+          {roomName && !validPk3RoomName(roomName) &&
+            <p className="maps-error">Use 1–40 letters, numbers, spaces, _ or -.
+              Start with a letter or number; paths are not allowed.</p>}
+
+          <label className="pk3-legal">
+            <input type="checkbox" checked={rightsConfirmed} disabled={busy}
+              onChange={event => setRightsConfirmed(event.target.checked)} />
+            <span>I have permission to convert and redistribute this map, textures
+              and included assets, including any commercial content.</span>
+          </label>
+        </>}
+
+        {job && <section className="pk3-job-review">
+          <span className="mini-tag">CONVERSION VERIFIED</span>
+          <h3>{job.roomName}</h3>
+          <p>Map ID: <code>{job.mapId}</code></p>
+          <p>Verified package SHA-256: <code>{job.hash}</code></p>
+          {job.warnings.length > 0 && <div className="pk3-warning">
+            <h4>Review conversion warnings before publishing</h4>
+            <ul>{job.warnings.map((warning, index) =>
+              <li key={index}>{warning}</li>)}</ul>
+            <label className="pk3-legal">
+              <input type="checkbox" checked={warningsReviewed} disabled={busy}
+                onChange={event => setWarningsReviewed(event.target.checked)} />
+              <span>I have reviewed the warnings and will test textures, collision,
+                spawns and gameplay before sharing this map.</span>
+            </label>
+          </div>}
+        </section>}
+      </>}
+
+      {((kind === "ppmap" && map) || (kind === "pk3" && job)) && <>
+        <label htmlFor="map-visibility">Publish visibility</label>
+        <select id="map-visibility" value={visibility} disabled={busy}
+          onChange={event => setVisibility(event.target.value as Visibility)}>
+          <option value="Published">Published: searchable in-game and on the website</option>
+          <option value="Unlisted">Unlisted: shareable by exact link</option>
+          <option value="Draft">Draft: private to your Hunter License</option>
+        </select>
+
+        <label htmlFor="map-notes">Release notes (optional)</label>
+        <textarea id="map-notes" maxLength={4000} rows={4} value={notes}
+          disabled={busy} onChange={event => setNotes(event.target.value)}
+          placeholder="What changed in this map?" />
+      </>}
+
+      {progress && <div className="maps-transfer" role="status">
         <strong>{progress.message}</strong>
-        <progress value={percentage} max={100} aria-label="Map upload progress" />
-        <span>{percentage}%</span>
+        {phase !== "converting" && <progress value={percent} max={100}
+          aria-label="Map upload progress" />}
+        <span>{phase === "converting" ? "Converting…" : percent + "%"}</span>
       </div>}
 
-      {notice && <p role={phase === "error" ? "alert" : "status"}
-        className={phase === "error" ? "maps-error" : "maps-success"}>{notice}</p>}
+      {notice && <p role={noticeIsError ? "alert" : "status"}
+        className={noticeIsError ? "maps-error" : "maps-success"}>{notice}</p>}
 
       <div className="hero-actions">
         <button type="submit" className="button"
-          disabled={!map || active || phase === "complete"}>
-          {phase === "paused" || phase === "error" ? "Retry / Resume Upload" : "Publish Map"}
+          disabled={!canSubmit || busy || phase === "complete"}>
+          {kind === "pk3"
+            ? job ? "Publish Converted Map" : "Convert PK3"
+            : "Publish Map"}
         </button>
-        {active && <button type="button" className="button button-ghost"
+        {busy && <button type="button" className="button button-ghost"
           onClick={() => controller.current?.abort()}>Pause Transfer</button>}
         <Link className="button button-ghost" href="/maps/my">My Maps</Link>
       </div>
+
       {publishedId && <Link className="text-link" href={"/maps/" + publishedId}>
         View published map →
       </Link>}
-      <p className="helper">If the connection drops, selecting the same file
-        and retrying resumes at the server-confirmed offset. Publishing an
-        existing Map ID checks its current revision and refuses stale updates.</p>
+      <p className="helper">
+        {kind === "pk3"
+          ? "PK3 uploads convert in a private service. After conversion, review the result and publish the verified .ppmap to Community."
+          : "Existing .ppmap packages publish directly. Interrupted uploads can resume using the same file and server-confirmed offset."}
+      </p>
     </form>
   );
 }

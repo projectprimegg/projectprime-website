@@ -1,4 +1,4 @@
-# Uploading .ppmap files from projectprime.gg
+# Uploading .ppmap or .pk3 files from projectprime.gg
 
 This website performs the same creator-authorized, exact-hash publication
 protocol as the desktop `MapCommunityClient`. Packages go directly to the
@@ -6,7 +6,7 @@ Community service, **never through a Vercel function**, because their supported
 maximum is 512 MiB.
 
 1. Sign into a Hunter License on `/maps/account`.
-2. Export a `.ppmap` from Project Prime Studio, then select it on `/maps/upload`.
+2. Select a `.ppmap` or `.pk3` in the single file chooser on `/maps/upload`. The website recognizes the extension and validates the archive before proceeding. Quake `.pk3` files use the isolated converter and require explicit rights confirmation, BSP selection, and converted-map review. `.ppmap` files follow the existing direct Community upload flow.
 3. The browser reads only the bounded ZIP manifest and incrementally hashes
    the archive in 4 MiB blocks. This is display/identity preflight, **not**
    a substitute for server-side strict package validation.
@@ -34,10 +34,11 @@ localStorage by the uploader. Supabase manages its own browser auth session.
 - The UI deliberately does not bypass stale-parent revision conflicts.
 - ZIP manifests are untrusted preflight input. Only the Community service
   can approve and publish the actual `.ppmap` archive.
-- Direct Quake `.pk3` conversion is available on a separate
-  `/maps/upload/pk3` page **only after** its isolated conversion service
-  is deployed and the website's `NEXT_PUBLIC_PK3_CONVERSION_URL` is set.
-  The existing strict `.ppmap` publishing contract remains unchanged.
+- The main `/maps/upload` chooser routes `.pk3` archives to the isolated
+  converter; the original `/maps/upload/pk3` workflow remains accessible.
+  PK3 conversion is enabled **only after** the backend is deployed and
+  `NEXT_PUBLIC_PK3_CONVERSION_URL` is configured. `.ppmap` publishing remains
+  available even when the converter is offline, with its strict contract unchanged.
 - Verify the map service has deployed approved CORS preflight support and a
   body limit compatible with browser chunks.
 - Validate the production Supabase sign-in redirect allowlist and public
