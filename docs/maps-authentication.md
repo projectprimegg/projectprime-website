@@ -10,11 +10,21 @@ Current game public defaults are used unless Vercel overrides:
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (browser-safe public key)
 - `NEXT_PUBLIC_MAP_SERVICE_URL` (the game Community map origin)
 
-The website offers email sign-in and optional anonymous sign-in (when
-enabled in the Supabase project **and** `NEXT_PUBLIC_ENABLE_GUEST_PUBLISHING=1`).
-Guest publishing is disabled by default to avoid easy per-account quota evasion
-through unlimited disposable browser identities. Enable only after rate limiting,
-CAPTCHA/abuse protection and moderation are accepted. Supabase **Auth > URL Configuration** must set the **Site URL** to
+The website supports creator accounts and account-free guest map uploads.
+On `/maps/upload`, visitors can inspect either file format before logging in.
+On explicit submission the browser checks for a current session and calls
+Supabase `signInAnonymously()` only if necessary. The guest receives a
+browser-bound Supabase identity with a short-lived `ppm1` Community ticket.
+This is **not** a public or shared upload token. The `/maps/account` and
+standalone PK3 pages also offer **Continue as Guest**. The previous
+`NEXT_PUBLIC_ENABLE_GUEST_PUBLISHING` UI flag is no longer needed.
+
+**Security:** Disposable anonymous identities can circumvent per-creator quotas.
+Keep Supabase anonymous signup rate limits enabled. Configure CAPTCHA/Turnstile
+and reverse-proxy/WAF upload throttles, plus moderation and storage quotas,
+before broad public rollout. Never put service-role keys in browser code.
+
+Supabase **Auth > URL Configuration** must set the **Site URL** to
 `https://projectprime.gg` (not localhost), and allow the exact redirects
 `https://projectprime.gg/license` and `https://projectprime.gg/maps/account`.
 Website email links and OAuth always use these public URLs even from a local
@@ -23,8 +33,7 @@ or preview build. To test localhost callbacks explicitly, set
 environment and allow the specific localhost paths in Supabase Auth.
 Never deploy that variable to production. Email templates must honor
 `{{ .ConfirmationURL }}` / `{{ .RedirectTo }}`, not hardcode `{{ .SiteURL }}`
-or localhost. Already-issued verification emails retain their old links. The email provider and, optionally, anonymous
-sign-ins must be enabled in the Supabase Auth dashboard.
+or localhost. Already-issued verification emails retain their old links. The email provider and anonymous sign-ins must be enabled in the Supabase Auth dashboard for both modes to work.
 
 `POST /api/maps/ticket` accepts the user's Supabase access JWT over
 same-origin HTTPS, forwards it to the already-existing Supabase Edge Function
