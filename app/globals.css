@@ -484,6 +484,15 @@ a { color: inherit; text-decoration: none; }
 .maps-bulk-heading strong { display:block; font-size:1.05rem; }
 .maps-bulk-heading small { display:block; margin-top:5px; color:var(--muted); }
 .maps-bulk-heading > span { color:var(--cyan-2); font-size:.82rem; }
+.maps-drop-zone {
+  border:1px dashed var(--line); padding:18px; transition:border-color .15s, background .15s;
+}
+.maps-drop-zone.is-dragging {
+  border-color:var(--cyan); background:rgba(85,216,255,.07);
+}
+.maps-drop-zone label { display:block; margin:0; }
+.maps-drop-zone input[type="file"] { margin-top:12px; }
+.maps-drop-zone .helper { margin-bottom:0; }
 .maps-bulk-item .pk3-job-review { padding:12px 0; }
 .maps-bulk-item .maps-transfer { margin:14px 0; }
 .maps-bulk-item .maps-transfer progress { min-width:120px; }

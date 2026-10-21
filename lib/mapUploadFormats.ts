@@ -1,5 +1,5 @@
-// The main creator picker routes each archive by extension. Preflight is
-// only a convenience: the Community service and converter validate the bytes.
+// Extensions define the accepted filename contract. The structural preflight
+// confirms the archive kind before choosing the publisher or converter.
 export type MapUploadKind = "ppmap" | "pk3";
 
 export function getMapUploadKind(filename: string): MapUploadKind | null {

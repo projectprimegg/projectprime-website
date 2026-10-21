@@ -1,12 +1,11 @@
 "use client";
 
-import { BlobReader, TextWriter, ZipReader } from "@zip.js/zip.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { communityApiUrl, type MapPackage, type MapProject } from "./communityMaps";
 import {
-  communityApiUrl, isMapHash, isMapId,
-  type MapPackage, type MapProject,
-} from "./communityMaps";
+  inspectMapArchive, type MapArchiveInspection, type PackageManifest,
+} from "./mapArchiveInspection";
 import { MapPublishSession } from "./mapPublishSession";
 import { mapUploadRetryDelay, waitForMapUploadRetry } from "./mapUploadRetry";
 
@@ -16,14 +15,7 @@ const MAX_CHUNK = 8 * 1024 * 1024;
 const MIN_CHUNK = 1 * 1024 * 1024;
 
 export type Visibility = "Published" | "Unlisted" | "Draft";
-export type PackageManifest = {
-  format: number;
-  mapId: string;
-  name: string;
-  displayName?: string | null;
-  mapVersion?: string | null;
-  contentHash: string;
-};
+export type { PackageManifest } from "./mapArchiveInspection";
 export type InspectedMap = { file: File; manifest: PackageManifest; hash: string };
 export type TransferProgress = {
   phase: string;
@@ -57,6 +49,7 @@ export async function inspectMapPackage(
   file: File,
   signal: AbortSignal,
   progress: (value: TransferProgress) => void,
+  prepared?: MapArchiveInspection,
 ): Promise<InspectedMap> {
   if (!file.name.toLowerCase().endsWith(".ppmap")) {
     throw new Error("Choose a Project Prime .ppmap archive exported from Map Studio.");
@@ -67,30 +60,11 @@ export async function inspectMapPackage(
 
   progress({ phase: "inspecting", done: 0, total: file.size,
     message: "Inspecting the map manifest…" });
-  const archive = new ZipReader(new BlobReader(file));
-  let manifest: PackageManifest;
-  try {
-    const entries = await archive.getEntries();
-    if (entries.length > 2048) throw new Error("Too many package entries.");
-    const entry = entries.find(item => item.filename === "manifest.json");
-    if (!entry || entry.directory || entry.encrypted || entry.uncompressedSize > 65536) {
-      throw new Error("Missing or invalid Project Prime manifest.json.");
-    }
-    const raw = await entry.getData(new TextWriter());
-    if (typeof raw !== "string" || raw.length > 65536) {
-      throw new Error("Map manifest exceeds the supported size.");
-    }
-    const data: unknown = JSON.parse(raw);
-    if (!data || typeof data !== "object") throw new Error("Invalid map manifest.");
-    manifest = data as PackageManifest;
-    if (![2, 3].includes(manifest.format) || !isMapId(manifest.mapId) ||
-        !manifest.name || typeof manifest.name !== "string" ||
-        !isMapHash(manifest.contentHash)) {
-      throw new Error("Unsupported map format or invalid map identity.");
-    }
-  } finally {
-    await archive.close();
+  const inspection = prepared ?? await inspectMapArchive(file, signal);
+  if (inspection.kind !== "ppmap") {
+    throw new Error("The selected archive does not contain a Project Prime .ppmap package.");
   }
+  const manifest = inspection.manifest;
 
   // Hash incrementally. Never keep 512 MiB of file bytes in browser memory.
   const hasher = sha256.create();

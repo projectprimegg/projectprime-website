@@ -6,9 +6,10 @@ Community service, **never through a Vercel function**, because their supported
 maximum is 512 MiB.
 
 1. Open `/maps/upload` without creating an account. Signed-in Hunters publish under their existing identity. Guests can select and inspect either file type immediately; clicking **Publish as Guest** or **Convert PK3 as Guest** creates a temporary Supabase anonymous session without an email or password.
-2. Select up to **30** mixed `.ppmap` and `.pk3` files in the same multi-select picker. You can add more selections until the queue is full, remove individual files and clear completed uploads. The website detects the extension and validates each archive independently. Invalid and oversized selections are rejected without blocking the valid files. Quake `.pk3` files use the isolated converter and require **per-map** rights confirmation, BSP selection, and converted-map review. `.ppmap` files use the direct Community upload flow.
-3. The browser reads only the bounded ZIP manifest and incrementally hashes
-   the archive in 4 MiB blocks. This is display/identity preflight, **not**
+2. Choose or drop up to **30** mixed `.ppmap` and `.pk3` files. You can add more selections until the queue is full, remove individual files and clear completed uploads. The extension determines the supported filename contract, then the website checks each archive's ZIP structure independently. A root `manifest.json` identifies a Project Prime package even when it also contains BSP files; an archive with BSP levels and no manifest is treated as a Quake PK3. A mismatch gets a per-file rename error. Invalid and oversized selections are rejected without blocking valid files. Quake `.pk3` files use the isolated converter and require **per-map** rights confirmation, BSP selection, and converted-map review. `.ppmap` files use the direct Community upload flow.
+3. The browser indexes each ZIP once, keeps only bounded entry metadata, and
+   reads only the bounded Project Prime manifest. It then incrementally hashes
+   `.ppmap` archives in 4 MiB blocks. This is display/identity preflight, **not**
    a substitute for server-side strict package validation.
 4. `/api/maps/ticket` mints a short-lived `ppm1` creator Bearer ticket.
 5. `GET /v2/maps?mine=true` finds the creator's known Map ID and latest

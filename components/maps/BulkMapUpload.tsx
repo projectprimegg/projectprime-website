@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
 import { useMapAuth } from "@/components/maps/MapAccount";
 import { ensureMapUploadIdentity } from "@/lib/mapGuestUpload";
+import { inspectMapArchive } from "@/lib/mapArchiveInspection";
 import {
   inspectMapPackage, publishMapPackage, type InspectedMap,
   type Visibility, type TransferProgress,
@@ -70,6 +71,7 @@ export function BulkMapUpload() {
   const [queue, setQueue] = useState<UploadItem[]>([]);
   const [preparing, setPreparing] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState("");
   const [visibility, setVisibility] = useState<Visibility>("Published");
   const [notes, setNotes] = useState("");
@@ -102,15 +104,16 @@ export function BulkMapUpload() {
     if (!item || signal.aborted) return false;
     patchItem(id, { status: "inspecting", error: "", progress: null });
     try {
-      if (item.kind === "ppmap") {
+      const archive = await inspectMapArchive(item.source, signal);
+      if (archive.kind === "ppmap") {
         const map = await inspectMapPackage(item.source, signal,
-          progress => showProgress(id, signal, progress));
+          progress => showProgress(id, signal, progress), archive);
         if (signal.aborted) throw new DOMException("Inspection paused.", "AbortError");
         patchItem(id, { map, status: "ready", progress: null });
       } else {
         if (item.source.size > MAX_PK3_SOURCE_BYTES)
           throw new Error("PK3 exceeds the 128 MiB source limit.");
-        const levels = await scanPk3Levels(item.source);
+        const levels = await scanPk3Levels(item.source, signal, archive);
         if (signal.aborted) throw new DOMException("Inspection paused.", "AbortError");
         patchItem(id, { levels, level: item.level && levels.includes(item.level) ? item.level : levels[0],
           roomName: item.roomName || suggestedRoom(item.source), status: "ready", progress: null });
@@ -124,11 +127,8 @@ export function BulkMapUpload() {
     }
   }
 
-  async function selectFiles(event: ChangeEvent<HTMLInputElement>) {
-    const chosen = Array.from(event.currentTarget.files || []);
-    // The same files may be selected again after removal.
-    event.currentTarget.value = "";
-    if (busy || chosen.length === 0) return;
+  async function addFiles(chosen: File[]) {
+    if (busy || controller.current || running.current || chosen.length === 0) return;
     const selection = planMapBatch(chosen, queueRef.current.map(item => item.source));
     if (selection.rejected.length)
       setNotice(selection.rejected.map(entry => entry.file.name + ": " + entry.reason).join("\n"));
@@ -159,6 +159,29 @@ export function BulkMapUpload() {
       if (controller.current === operation) controller.current = null;
       setPreparing(false);
     }
+  }
+
+  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
+    const chosen = Array.from(event.currentTarget.files || []);
+    // The same files may be selected again after removal.
+    event.currentTarget.value = "";
+    void addFiles(chosen);
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+    if (Array.from(event.dataTransfer.types).includes("Files")) setDragging(true);
+  }
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    if (Array.from(event.dataTransfer.types).includes("Files")) event.preventDefault();
+  }
+  function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+    const target = event.relatedTarget;
+    if (!(target instanceof Node) || !event.currentTarget.contains(target)) setDragging(false);
+  }
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+    void addFiles(Array.from(event.dataTransfer.files));
   }
 
   async function submitBatch(event: FormEvent<HTMLFormElement>) {
@@ -297,11 +320,15 @@ export function BulkMapUpload() {
         or clear site data.
       </p>}
 
-      <label htmlFor="map-package">Map archives (.ppmap up to 512 MiB, .pk3 up to 128 MiB each)</label>
-      <input id="map-package" type="file" multiple accept=".ppmap,.pk3"
-        disabled={busy || queue.length >= MAX_BULK_MAPS} onChange={selectFiles} />
-      <p className="helper">Add files in several selections. Duplicate selections are skipped.
-        Remove individual files to free queue space.</p>
+      <div className={"maps-drop-zone" + (dragging ? " is-dragging" : "")}
+        role="group" aria-label="Add map archives" onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+        <label htmlFor="map-package">Choose or drop map archives (.ppmap up to 512 MiB, .pk3 up to 128 MiB each)</label>
+        <input id="map-package" type="file" multiple accept=".ppmap,.pk3"
+          disabled={busy || queue.length >= MAX_BULK_MAPS} onChange={selectFiles} />
+        <p className="helper">Mixed .ppmap and .pk3 files use the same structural checks whether selected or dropped.
+          Add files in several selections. Duplicate selections are skipped; remove individual files to free queue space.</p>
+      </div>
 
       {queue.length > 0 && <>
         <div className="maps-bulk-summary" role="status">
