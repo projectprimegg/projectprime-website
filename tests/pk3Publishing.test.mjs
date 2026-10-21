@@ -114,6 +114,7 @@ test("main Maps upload shows exactly one file chooser and routes to existing han
   assert.match(combined, /publishMapPackage\(/);
   assert.match(combined, /rightsConfirmed/);
   assert.match(combined, /warningsReviewed/);
-  assert.match(combined, /!converterConfigured/);
+  assert.match(combined, /converter\.status !== "available"/);
+  assert.match(combined, /usePk3ServiceAvailability/);
   assert.match(dedicatedPk3, /<Pk3Upload\s*\/>/);
 });
