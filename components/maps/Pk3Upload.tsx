@@ -18,7 +18,7 @@ function suggestedRoom(file: File): string {
   return "Q3_" + (name || "CUSTOM").slice(0, 36);
 }
 
-export function Pk3Upload() {
+export function Pk3Upload({ embedded = false }: { embedded?: boolean } = {}) {
   const { client, session, loading } = useMapAuth();
   const controller = useRef<AbortController | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -126,11 +126,19 @@ export function Pk3Upload() {
     }
   }
 
-  if (loading) return <section className="panel maps-upload">Checking Hunter License…</section>;
-  if (!session) return <MapAccountPanel />;
+  if (loading) return <section id={embedded ? "pk3-upload" : undefined}
+    className="panel maps-upload pk3-upload">Checking Hunter License…</section>;
+  if (!session) return embedded ? (
+    <section id="pk3-upload" className="panel maps-upload pk3-upload">
+      <span className="mini-tag">QUAKE SOURCE // AUTOMATED CONVERSION</span>
+      <h2>Convert .pk3 to Project Prime.</h2>
+      <p>Sign in with the Hunter License form above to convert and publish
+        Quake maps without leaving this page.</p>
+    </section>
+  ) : <MapAccountPanel />;
 
   return (
-    <div className="panel maps-upload pk3-upload">
+    <div id={embedded ? "pk3-upload" : undefined} className="panel maps-upload pk3-upload">
       <span className="mini-tag">QUAKE SOURCE // AUTOMATED CONVERSION</span>
       <h2>Convert .pk3 to Project Prime.</h2>
       <p>Upload a Quake III .pk3 containing a compiled BSP. An isolated
@@ -176,7 +184,10 @@ export function Pk3Upload() {
           </button>
           {busy && <button className="button button-ghost" type="button"
             onClick={() => controller.current?.abort()}>Pause</button>}
-          <Link className="button button-ghost" href="/maps/upload">Upload .ppmap Instead</Link>
+          <Link className="button button-ghost"
+            href={embedded ? "#ppmap-upload" : "/maps/upload"}>
+            {embedded ? "Back to .ppmap upload ↑" : "Upload .ppmap Instead"}
+          </Link>
         </div>
       </form>
 
