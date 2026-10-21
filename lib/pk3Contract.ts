@@ -18,7 +18,7 @@ export function validPk3RoomName(value: string): boolean {
 export function pk3ConversionUrl(): URL {
   const explicit = process.env.NEXT_PUBLIC_PK3_CONVERSION_URL?.trim();
   const mapService = process.env.NEXT_PUBLIC_MAP_SERVICE_URL?.trim() ||
-    "https://maps.rebooty.xyz/";
+    "https://maps.projectprime.gg/";
   const source = explicit || new URL(
     "pk3/", mapService.endsWith("/") ? mapService : mapService + "/",
   ).toString();

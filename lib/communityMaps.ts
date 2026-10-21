@@ -57,7 +57,7 @@ export function isMapId(value: string): boolean { return GUID.test(value); }
 // One HTTPS service for both the browser uploader and server-rendered catalog.
 // Operator must configure NEXT_PUBLIC_MAP_SERVICE_URL when the origin moves.
 export function communityServiceUrl(): URL {
-  const configured = process.env.NEXT_PUBLIC_MAP_SERVICE_URL || "https://maps.rebooty.xyz/";
+  const configured = process.env.NEXT_PUBLIC_MAP_SERVICE_URL || "https://maps.projectprime.gg/";
   const address = new URL(configured.endsWith("/") ? configured : configured + "/");
   if (address.protocol !== "https:" &&
       !(address.protocol === "http:" && ["localhost", "127.0.0.1"].includes(address.hostname))) {

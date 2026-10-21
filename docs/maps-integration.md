@@ -5,8 +5,11 @@ service's `GET /v2/maps`, `GET /v2/maps/{mapId}`, and revision APIs. It
 does not store a parallel map index or rewrite immutable map identities.
 
 Configure `NEXT_PUBLIC_MAP_SERVICE_URL` (HTTPS URL with trailing slash)
-on Vercel and for local development. The current game default is
-`https://maps.rebooty.xyz/`, used by the site if this variable is unset.
+on Vercel and for local development. The website default is
+`https://maps.projectprime.gg/`, used if the Vercel environment variable is unset.
+A Vercel environment variable still takes precedence over this source default.
+Do not switch production traffic until the new hostname, HTTPS certificate,
+and Community map service health are verified.
 The website must use the exact Community origin configured for the game.
 
 Public pages are server rendered and paginated. A same-origin preview

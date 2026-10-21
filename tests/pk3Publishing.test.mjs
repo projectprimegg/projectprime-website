@@ -31,7 +31,7 @@ test("PK3 converter defaults to Community HTTPS host but supports explicit overr
   try {
     delete process.env.NEXT_PUBLIC_PK3_CONVERSION_URL;
     delete process.env.NEXT_PUBLIC_MAP_SERVICE_URL;
-    assert.equal(pk3ConversionUrl().href, "https://maps.rebooty.xyz/pk3/");
+    assert.equal(pk3ConversionUrl().href, "https://maps.projectprime.gg/pk3/");
     process.env.NEXT_PUBLIC_MAP_SERVICE_URL = "https://maps.example.test/";
     assert.equal(pk3ConversionUrl().href, "https://maps.example.test/pk3/");
     process.env.NEXT_PUBLIC_PK3_CONVERSION_URL = "https://converter.example.test/source/";
