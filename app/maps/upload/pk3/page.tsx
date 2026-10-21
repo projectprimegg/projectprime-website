@@ -13,7 +13,7 @@ export default function Pk3PublishPage() {
         <span className="eyebrow">COMMUNITY CREATOR // QUAKE INTERCHANGE</span>
         <h1>Bring a Quake arena to Prime.</h1>
         <p>Direct .pk3 upload, dedicated conversion, verification and Community publication
-          through your existing Hunter License.</p>
+          as a guest or registered creator.</p>
         <div className="hero-actions">
           <Link href="/maps/upload" className="button button-ghost">← Standard .ppmap Upload</Link>
           <Link href="/maps" className="button button-ghost">Browse Maps</Link>

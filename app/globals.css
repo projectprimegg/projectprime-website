@@ -431,6 +431,13 @@ a { color: inherit; text-decoration: none; }
   .public-hunter-identity { padding:22px; }
 }
 
+/* Anonymous creators can preview a map without starting a session. */
+.maps-upload-guest { border: 1px solid var(--line); background: rgba(85,216,255,.03);
+  padding: 18px 20px; margin: 22px 0; }
+.maps-upload-guest strong, .maps-upload-guest a { color: var(--cyan-2); }
+.maps-upload-guest a { text-decoration: underline; text-underline-offset: 3px; }
+.maps-upload-guest p { margin: 8px 0; }
+
 /* Quake .pk3 to Project Prime map publishing */
 .pk3-upload h2 { font-size: 2rem; margin: 12px 0; }
 .pk3-upload input[type="file"] { padding: 12px; }
