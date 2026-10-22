@@ -1,0 +1,5 @@
+# Dependency audit snapshot
+
+On 2026-10-21, `npm audit` reported 3 vulnerability records for the lockfile with `next@15.5.18`: 1 critical and 2 high. Updating Next.js within the existing 15.5 release line to [`15.5.28`](https://github.com/vercel/next.js/releases/tag/v15.5.28) removes the critical findings and Next.js security advisories fixed in that release. The [AVIF image-optimization advisory](https://github.com/advisories/GHSA-2xp9-vwfh-vxw4) affects versions before 15.5.24.
+
+After the update, `npm audit` reports 3 vulnerability records: 2 high and 1 moderate, with no critical findings. The remaining report entries are PostCSS (`8.4.31`, including [GHSA-6g55-p6wh-862q](https://github.com/advisories/GHSA-6g55-p6wh-862q)), Next.js through its vulnerable PostCSS dependency, and sharp (`0.34.5`, including [GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj)). npm reports that resolving the PostCSS path requires Next.js 16.4.2, a major upgrade; this patch does not force that upgrade or add dependency overrides.

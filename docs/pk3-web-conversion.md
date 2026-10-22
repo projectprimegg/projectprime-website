@@ -1,11 +1,11 @@
 # Website Quake PK3 direct upload
 
-`/maps/upload` accepts both `.ppmap` and `.pk3` in a single file picker. It
-routes `.ppmap` to the existing Community publisher and `.pk3` to the
-creator-authorized, guided Quake conversion flow after inspecting the ZIP
-index. The standalone `/maps/upload/pk3` route remains available for direct
-links. Selecting a PK3 never publishes it without a separate conversion and
-creator approval.
+`/maps/upload` accepts both `.ppmap` and `.pk3` through one chooser or drop
+zone. It checks archive structure before routing: a valid root `manifest.json`
+identifies a Project Prime package, while a ZIP with playable `maps/*.bsp`
+entries and no root manifest is treated as a Quake PK3. The standalone
+`/maps/upload/pk3` route remains available for direct links. Selecting a PK3
+never publishes it without a separate conversion and creator approval.
 
 It requires a separately deployed `tools/pk3-upload` service from
 AntiNotAnti/Project-Prime PRs PK3-01 and PK3-02. By default, the website

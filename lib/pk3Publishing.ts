@@ -1,11 +1,11 @@
 "use client";
 
-import { BlobReader, ZipReader } from "@zip.js/zip.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMapHash, isMapId } from "@/lib/communityMaps";
 import { inspectMapPackage, mintCommunityTicket, type InspectedMap,
   type TransferProgress } from "@/lib/mapPublishing";
+import { inspectMapArchive, type MapArchiveInspection } from "@/lib/mapArchiveInspection";
 
 import {
   MAX_PK3_SOURCE_BYTES, MAX_CONVERTED_PACKAGE_BYTES,
@@ -31,35 +31,20 @@ export type ConvertedPk3Job = {
 };
 export type Pk3Progress = TransferProgress;
 
-export async function scanPk3Levels(file: File): Promise<string[]> {
+export async function scanPk3Levels(
+  file: File,
+  signal?: AbortSignal,
+  prepared?: MapArchiveInspection,
+): Promise<string[]> {
   if (!file.name.toLowerCase().endsWith(".pk3") ||
       file.size === 0 || file.size > MAX_PK3_SOURCE_BYTES) {
     throw new Error("Choose a Quake .pk3 up to 128 MiB.");
   }
-  const zip = new ZipReader(new BlobReader(file));
-  try {
-    const entries = await zip.getEntries();
-    if (entries.length > 20000) throw new Error("Quake archive has too many ZIP entries.");
-    const levels = new Set<string>();
-    for (const entry of entries) {
-      const canonical = entry.filename.replaceAll("\\", "/");
-      // Normal ZIP archives often include explicit directory entries that
-      // end in '/'. Match the stricter server-side validator's TrimEnd rule.
-      const segments = canonical.replace(/\/$/, "").split("/");
-      if (entry.filename !== canonical || canonical.startsWith("/") ||
-          canonical.includes(":") ||
-          segments.some(segment => segment === "" ||
-            segment === "." || segment === "..") ||
-          entry.uncompressedSize > 128 * 1024 * 1024) {
-        throw new Error("Quake source contains an unsupported or unsafe archive path.");
-      }
-      const match = /^maps\/([A-Za-z0-9_.-]{1,80})\.bsp$/i.exec(canonical);
-      if (match && !entry.directory) levels.add(match[1]);
-    }
-    if (levels.size === 0) throw new Error("No playable maps/*.bsp level found inside the .pk3.");
-    if (levels.size > 64) throw new Error("Too many BSP levels in one web conversion.");
-    return [...levels].sort((a,b) => a.localeCompare(b));
-  } finally { await zip.close(); }
+  const inspection = prepared ?? await inspectMapArchive(file, signal);
+  if (inspection.kind !== "pk3") {
+    throw new Error("The selected archive does not contain a Quake .pk3 with maps/*.bsp.");
+  }
+  return inspection.levels;
 }
 
 async function sourceHash(file: File, signal: AbortSignal,

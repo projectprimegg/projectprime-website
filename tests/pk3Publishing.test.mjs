@@ -115,6 +115,9 @@ test("main Maps upload uses one multi-select picker and preserves both workflows
   assert.match(combined, /warningsReviewed/);
   assert.match(combined, /rightsConfirmed/);
   assert.match(combined, /usePk3ServiceAvailability/);
+  assert.match(combined, /const publishSession = new MapPublishSession\(\)/);
+  assert.match(combined, /progress, publishSession/);
+  assert.equal((combined.match(/await publishInspectedMap\(/g) || []).length, 2);
   assert.match(dedicatedPk3, /<Pk3Upload\s*\/>/);
 });
 
