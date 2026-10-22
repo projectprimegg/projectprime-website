@@ -296,8 +296,6 @@ export async function publishMapPackage(args: {
       await reconcileAfterUnconfirmedPut(state.offset);
       continue;
     }
-    networkRecoveryFailures = 0;
-
     if (response.status === 413 && maxChunk > MIN_CHUNK) {
       maxChunk = Math.max(MIN_CHUNK, Math.floor(maxChunk / 2));
       continue;
@@ -337,8 +335,12 @@ export async function publishMapPackage(args: {
     if (!next.complete && next.offset <= state.offset) {
       throw new Error("The server did not advance the upload offset.");
     }
+    const confirmedOffset = state.offset;
     state = next;
     retry = 0;
+    if (state.offset > confirmedOffset) {
+      networkRecoveryFailures = 0;
+    }
     progress({ phase: "uploading", done: state.offset, total: map.file.size,
       message: "Uploaded " + Math.round(state.offset * 100 / map.file.size) + "%…" });
   }

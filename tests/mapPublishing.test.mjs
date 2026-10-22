@@ -263,6 +263,41 @@ test("a dropped recovery GET body is retried before resuming at the confirmed of
   assert.deepEqual(received, new Uint8Array(new TextEncoder().encode(contents)));
 });
 
+test("repeated dropped PUT bodies with unchanged server state hit the recovery budget", async t => {
+  const originalFetch = globalThis.fetch;
+  const originalRandom = Math.random;
+  t.after(() => { globalThis.fetch = originalFetch; Math.random = originalRandom; });
+  Math.random = () => 0;
+  const map = mapFor("data", hash("7"));
+  let putCount = 0;
+  let recoveryGets = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method || "GET";
+    if (url === "/api/maps/ticket") return json({ ticket: "ticket-a" });
+    if (url.includes("/v2/maps?mine=true")) return json([]);
+    if (method === "POST" && url.includes("/uploads/") && !url.endsWith("/complete")) {
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+        chunkBytes: map.file.size, complete: false });
+    }
+    if (method === "PUT" && url.includes("/uploads/")) {
+      putCount++;
+      return droppedJsonBody();
+    }
+    if (method === "GET" && url.includes("/uploads/")) {
+      recoveryGets++;
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+        chunkBytes: map.file.size, complete: false });
+    }
+    throw new Error("Unexpected request " + method + " " + url);
+  };
+
+  await assert.rejects(publishForNetworkTest(map, new AbortController().signal),
+    /connection failed repeatedly and upload progress could not be confirmed/);
+  assert.equal(putCount, 6);
+  assert.equal(recoveryGets, 5);
+});
+
 test("malformed JSON and invalid successful bodies fail without recovery", async t => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
