@@ -134,14 +134,28 @@ async function ensure(response: Response): Promise<void> {
   throw new MapPublishError(response.status, message, data || undefined);
 }
 
-function validState(value: UploadState, expected: InspectedMap): UploadState {
-  if (value.packageHash !== expected.hash || value.bytes !== expected.file.size ||
-      !Number.isInteger(value.offset) || value.offset < 0 ||
-      value.offset > value.bytes || !Number.isInteger(value.chunkBytes) ||
-      value.chunkBytes <= 0 || value.chunkBytes > 50 * 1024 * 1024) {
+function validState(value: unknown, expected: InspectedMap): UploadState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("The Community service returned an invalid upload offset.");
   }
-  return value;
+  const state = value as UploadState;
+  if (state.packageHash !== expected.hash || state.bytes !== expected.file.size ||
+      !Number.isInteger(state.offset) || state.offset < 0 ||
+      state.offset > state.bytes || !Number.isInteger(state.chunkBytes) ||
+      state.chunkBytes <= 0 || state.chunkBytes > 50 * 1024 * 1024) {
+    throw new Error("The Community service returned an invalid upload offset.");
+  }
+  return state;
+}
+
+async function readUploadState(
+  response: Response,
+  expected: InspectedMap,
+): Promise<UploadState> {
+  if (response.bodyUsed || response.body?.locked) {
+    throw new Error("The Community service returned an unreadable upload state.");
+  }
+  return validState(await response.json(), expected);
 }
 
 export async function ownedMapProjects(
@@ -197,11 +211,16 @@ export async function publishMapPackage(args: {
   let response = await api(ticket, "POST", "uploads/" + map.hash,
     JSON.stringify(start), signal);
   await ensure(response);
-  let state = validState(await response.json() as UploadState, map);
+  let state = validState(await response.json(), map);
   let maxChunk = Math.min(state.chunkBytes, MAX_CHUNK);
   let retry = 0;
   let refreshed = 0;
   let networkRecoveryFailures = 0;
+
+  const throwIfAborted = (error: unknown) => {
+    if (signal.aborted) throw new DOMException("Upload paused.", "AbortError");
+    if (error instanceof Error && error.name === "AbortError") throw error;
+  };
 
   const pauseForNetworkRecovery = async () => {
     networkRecoveryFailures++;
@@ -219,9 +238,7 @@ export async function publishMapPackage(args: {
       try {
         current = await api(ticket, "GET", "uploads/" + map.hash, undefined, signal);
       } catch (error) {
-        if (signal.aborted || (error instanceof Error && error.name === "AbortError")) {
-          throw error;
-        }
+        throwIfAborted(error);
         if (!(error instanceof TypeError)) throw error;
         await pauseForNetworkRecovery();
         continue;
@@ -237,11 +254,30 @@ export async function publishMapPackage(args: {
         continue;
       }
       await ensure(current);
-      const next = validState(await current.json() as UploadState, map);
+      let next: UploadState;
+      try {
+        next = await readUploadState(current, map);
+      } catch (error) {
+        throwIfAborted(error);
+        if (!(error instanceof TypeError)) throw error;
+        await pauseForNetworkRecovery();
+        continue;
+      }
       if (next.offset < state.offset) {
         throw new Error("The Community service returned an upload offset behind the last confirmed position.");
       }
       return next;
+    }
+  };
+
+  const reconcileAfterUnconfirmedPut = async (confirmedOffset: number) => {
+    await pauseForNetworkRecovery();
+    state = await recoverUploadState();
+    maxChunk = Math.min(maxChunk, state.chunkBytes, MAX_CHUNK);
+    if (state.offset > confirmedOffset) {
+      networkRecoveryFailures = 0;
+      progress({ phase: "uploading", done: state.offset, total: map.file.size,
+        message: "Confirmed upload progress after reconnecting…" });
     }
   };
 
@@ -255,18 +291,9 @@ export async function publishMapPackage(args: {
       response = await api(ticket, "PUT",
         "uploads/" + map.hash + "?offset=" + state.offset, chunk, signal);
     } catch (error) {
-      if (signal.aborted) throw new DOMException("Upload paused.", "AbortError");
-      if (error instanceof Error && error.name === "AbortError") throw error;
+      throwIfAborted(error);
       if (!(error instanceof TypeError)) throw error;
-      const confirmedOffset = state.offset;
-      await pauseForNetworkRecovery();
-      state = await recoverUploadState();
-      maxChunk = Math.min(maxChunk, state.chunkBytes, MAX_CHUNK);
-      if (state.offset > confirmedOffset) {
-        networkRecoveryFailures = 0;
-        progress({ phase: "uploading", done: state.offset, total: map.file.size,
-          message: "Confirmed upload progress after reconnecting…" });
-      }
+      await reconcileAfterUnconfirmedPut(state.offset);
       continue;
     }
     networkRecoveryFailures = 0;
@@ -298,7 +325,15 @@ export async function publishMapPackage(args: {
       continue;
     }
     await ensure(response);
-    const next = validState(await response.json() as UploadState, map);
+    let next: UploadState;
+    try {
+      next = await readUploadState(response, map);
+    } catch (error) {
+      throwIfAborted(error);
+      if (!(error instanceof TypeError)) throw error;
+      await reconcileAfterUnconfirmedPut(state.offset);
+      continue;
+    }
     if (!next.complete && next.offset <= state.offset) {
       throw new Error("The server did not advance the upload offset.");
     }

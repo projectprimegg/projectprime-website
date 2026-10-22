@@ -29,6 +29,11 @@ const { publishMapPackage } = await import("../lib/mapPublishing.ts");
 const json = value => new Response(JSON.stringify(value), {
   headers: { "content-type": "application/json" },
 });
+const droppedJsonBody = () => new Response(new ReadableStream({
+  start(controller) {
+    controller.error(new TypeError("connection dropped while reading response body"));
+  },
+}), { status: 200, headers: { "content-type": "application/json" } });
 const uuid = value => "00000000-0000-0000-0000-" + String(value).padStart(12, "0");
 const hash = value => String(value).repeat(64);
 const clientFor = ownerId => ({ auth: { getSession: async () => ({
@@ -163,6 +168,146 @@ test("a dropped chunk is reconciled before sending only the unconfirmed suffix",
   assert.deepEqual(putOffsets, [0, 4]);
   assert.equal(recoveryGets, 1);
   assert.deepEqual(received, new Uint8Array(new TextEncoder().encode(contents)));
+});
+
+test("a dropped successful PUT body is reconciled before sending only the suffix", async t => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const contents = "abcdef";
+  const map = mapFor(contents, hash("c"));
+  const received = new Uint8Array(contents.length);
+  const putOffsets = [];
+  let serverOffset = 0;
+  let recoveryGets = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method || "GET";
+    if (url === "/api/maps/ticket") return json({ ticket: "ticket-a" });
+    if (url.includes("/v2/maps?mine=true")) return json([]);
+    if (method === "POST" && url.includes("/uploads/") && !url.endsWith("/complete")) {
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+        chunkBytes: 4, complete: false });
+    }
+    if (method === "PUT" && url.includes("/uploads/")) {
+      const offset = Number(new URL(url).searchParams.get("offset"));
+      const chunk = new Uint8Array(await init.body.arrayBuffer());
+      putOffsets.push(offset);
+      if (offset !== serverOffset) return json({ message: "offset conflict" }, 409);
+      received.set(chunk, offset);
+      serverOffset += chunk.length;
+      if (offset === 0) return droppedJsonBody();
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: serverOffset,
+        chunkBytes: 4, complete: false });
+    }
+    if (method === "GET" && url.includes("/uploads/")) {
+      recoveryGets++;
+      return json({ packageHash: map.hash, bytes: map.file.size,
+        offset: serverOffset, chunkBytes: 4, complete: false });
+    }
+    if (method === "POST" && url.endsWith("/complete")) {
+      return json({ hash: map.hash, mapId: map.manifest.mapId });
+    }
+    throw new Error("Unexpected request " + method + " " + url);
+  };
+
+  await publishForNetworkTest(map, new AbortController().signal);
+  assert.deepEqual(putOffsets, [0, 4]);
+  assert.equal(recoveryGets, 1);
+  assert.deepEqual(received, new Uint8Array(new TextEncoder().encode(contents)));
+});
+
+test("a dropped recovery GET body is retried before resuming at the confirmed offset", async t => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const contents = "abcdef";
+  const map = mapFor(contents, hash("b"));
+  const received = new Uint8Array(contents.length);
+  const putOffsets = [];
+  let serverOffset = 0;
+  let recoveryGets = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method || "GET";
+    if (url === "/api/maps/ticket") return json({ ticket: "ticket-a" });
+    if (url.includes("/v2/maps?mine=true")) return json([]);
+    if (method === "POST" && url.includes("/uploads/") && !url.endsWith("/complete")) {
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+        chunkBytes: 4, complete: false });
+    }
+    if (method === "PUT" && url.includes("/uploads/")) {
+      const offset = Number(new URL(url).searchParams.get("offset"));
+      const chunk = new Uint8Array(await init.body.arrayBuffer());
+      putOffsets.push(offset);
+      if (offset !== serverOffset) return json({ message: "offset conflict" }, 409);
+      received.set(chunk, offset);
+      serverOffset += chunk.length;
+      if (offset === 0) throw new TypeError("connection dropped after acceptance");
+      return json({ packageHash: map.hash, bytes: map.file.size, offset: serverOffset,
+        chunkBytes: 4, complete: false });
+    }
+    if (method === "GET" && url.includes("/uploads/")) {
+      recoveryGets++;
+      if (recoveryGets === 1) return droppedJsonBody();
+      return json({ packageHash: map.hash, bytes: map.file.size,
+        offset: serverOffset, chunkBytes: 4, complete: false });
+    }
+    if (method === "POST" && url.endsWith("/complete")) {
+      return json({ hash: map.hash, mapId: map.manifest.mapId });
+    }
+    throw new Error("Unexpected request " + method + " " + url);
+  };
+
+  await publishForNetworkTest(map, new AbortController().signal);
+  assert.deepEqual(putOffsets, [0, 4]);
+  assert.equal(recoveryGets, 2);
+  assert.deepEqual(received, new Uint8Array(new TextEncoder().encode(contents)));
+});
+
+test("malformed JSON and invalid successful bodies fail without recovery", async t => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  for (const bodyType of ["malformed", "consumed", "invalid-state"]) {
+    const map = mapFor("data", hash(bodyType === "malformed" ? "a" :
+      bodyType === "consumed" ? "9" : "8"));
+    let recoveryGets = 0;
+    globalThis.fetch = async (input, init = {}) => {
+      const url = String(input);
+      const method = init.method || "GET";
+      if (url === "/api/maps/ticket") return json({ ticket: "ticket-a" });
+      if (url.includes("/v2/maps?mine=true")) return json([]);
+      if (method === "POST" && url.includes("/uploads/") && !url.endsWith("/complete")) {
+        return json({ packageHash: map.hash, bytes: map.file.size, offset: 0,
+          chunkBytes: map.file.size, complete: false });
+      }
+      if (method === "PUT" && url.includes("/uploads/")) {
+        if (bodyType === "malformed") return new Response("not json", { status: 200 });
+        if (bodyType === "invalid-state") return json(null);
+        const response = json({ packageHash: map.hash, bytes: map.file.size,
+          offset: map.file.size, chunkBytes: map.file.size, complete: false });
+        await response.json();
+        return response;
+      }
+      if (method === "GET" && url.includes("/uploads/")) {
+        recoveryGets++;
+        return json({ packageHash: map.hash, bytes: map.file.size,
+          offset: map.file.size, chunkBytes: map.file.size, complete: false });
+      }
+      throw new Error("Unexpected request " + method + " " + url);
+    };
+
+    if (bodyType === "malformed") {
+      await assert.rejects(publishForNetworkTest(map, new AbortController().signal),
+        SyntaxError);
+    } else if (bodyType === "invalid-state") {
+      await assert.rejects(publishForNetworkTest(map, new AbortController().signal),
+        /invalid upload offset/);
+    } else {
+      await assert.rejects(publishForNetworkTest(map, new AbortController().signal),
+        /unreadable upload state/);
+    }
+    assert.equal(recoveryGets, 0);
+  }
 });
 
 test("repeated PUT and recovery GET network failures stop at the bounded retry limit", async t => {
