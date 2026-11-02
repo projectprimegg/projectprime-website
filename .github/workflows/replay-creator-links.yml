@@ -1,0 +1,35 @@
+name: Replay creator links
+on:
+  pull_request:
+    paths:
+      - 'app/watch/**'
+      - 'lib/replayShare.ts'
+      - 'components/replays/**'
+      - 'tests/replayShare.test.mjs'
+      - 'package.json'
+      - '.github/workflows/replay-creator-links.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/watch/**'
+      - 'lib/replayShare.ts'
+      - 'components/replays/**'
+permissions:
+  contents: read
+jobs:
+  creator-links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Validate allowlisted video URLs and privacy boundaries
+        run: npm run test:replays
+      - name: Check Next.js TypeScript
+        run: npx tsc --noEmit
+      - name: Build public share routes
+        run: npm run build
