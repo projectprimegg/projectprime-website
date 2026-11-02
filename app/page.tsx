@@ -6,7 +6,7 @@ const future = [
   ["Leaderboards", "Browse server-accepted lifetime career rankings by mode and achievement.", "/leaderboards", true],
   ["Maps", "Discover and publish custom community arenas.", "/maps", true],
   ["Hunter Directory", "Explore the public profiles of Hunters who opted in.", "/hunters", true],
-  ["Watch", "Live tournaments, broadcasts and future match replays.", "/watch", false],
+  ["Watch", "Official videos and creator-shared exported replay links.", "/watch", true],
 ] as const;
 
 export default async function Home() {
